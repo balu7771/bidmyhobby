@@ -55,8 +55,15 @@ public class ImageProcessingService {
 
         Map<String, Object> result = objectMapper.readValue(responseJson, Map.class);
         Map<String, Object> body = objectMapper.readValue((String) result.get("body"), Map.class);
+        Number statusCode = (Number) result.get("statusCode");
+        if (response.functionError() != null || statusCode == null || statusCode.intValue() != 200) {
+            throw new IllegalStateException("Image redaction failed; image will not be published");
+        }
 
         String processedImageBase64 = (String) body.get("processedImage");
+        if (processedImageBase64 == null || processedImageBase64.isBlank()) {
+            throw new IllegalStateException("Image processor returned no redacted image");
+        }
         return Base64.getDecoder().decode(processedImageBase64);
     }
 
