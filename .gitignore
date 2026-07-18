@@ -1,0 +1,54 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+service-account*.json
+credentials*.json
+OCI/
+AWS Access/
+
+# Dependencies and build outputs
+**/node_modules/
+**/.next/
+**/target/
+**/dist/
+**/build/
+**/out/
+*.jar
+*.zip
+*.tar
+*.tar.gz
+*.tsbuildinfo
+lambdas/**/package/
+
+# Runtime data, logs, and caches
+*.db
+*.mv.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+data/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*~
+
+# Local test/session artifacts
+cookies.txt
+profiles.txt
+cp.txt

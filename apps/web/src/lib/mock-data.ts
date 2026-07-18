@@ -1,0 +1,68 @@
+export const trendingHobbies = [
+    {
+        id: "h1",
+        name: "Vintage Cameras",
+        description: "Analog photography gear and restoration.",
+        members: "12.5k",
+        trendingScore: 98,
+        image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=600&auto=format&fit=crop",
+        categories: ["Photography", "Vintage"],
+    },
+    {
+        id: "h2",
+        name: "Mechanical Keyboards",
+        description: "Custom builds, keycaps, and switches.",
+        members: "45.2k",
+        trendingScore: 95,
+        image: "https://images.unsplash.com/photo-1595225476474-87563907a212?q=80&w=600&auto=format&fit=crop",
+        categories: ["Tech", "DIY"],
+    },
+    {
+        id: "h3",
+        name: "Rare Coins",
+        description: "Numismatics from around the globe.",
+        members: "8.1k",
+        trendingScore: 88,
+        image: "https://images.unsplash.com/photo-1610660233481-98ad87317cd5?q=80&w=600&auto=format&fit=crop",
+        categories: ["Collecting", "History"],
+    },
+    {
+        id: "h4",
+        name: "Vinyl Records",
+        description: "Classic albums and limited editions.",
+        members: "32.4k",
+        trendingScore: 92,
+        image: "https://images.unsplash.com/photo-1603048588665-791ca8aea617?q=80&w=600&auto=format&fit=crop",
+        categories: ["Music", "Vintage"],
+    },
+];
+
+export const featuredAuctions = [
+    {
+        id: "a1",
+        title: "Leica M3 Single Stroke",
+        currentBid: "$1,450",
+        endTime: "2h 15m",
+        hobby: "Vintage Cameras",
+        image: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=600&auto=format&fit=crop",
+        bids: 24,
+    },
+    {
+        id: "a2",
+        title: "1943 Copper Penny Rare",
+        currentBid: "$8,500",
+        endTime: "5h 30m",
+        hobby: "Rare Coins",
+        image: "https://images.unsplash.com/photo-1563223771-419b4efc440d?q=80&w=600&auto=format&fit=crop",
+        bids: 45,
+    },
+    {
+        id: "a3",
+        title: "GMK Botanical Base Kit",
+        currentBid: "$320",
+        endTime: "1h 05m",
+        hobby: "Mechanical Keyboards",
+        image: "https://images.unsplash.com/photo-1621217520038-f938d227b7b1?q=80&w=600&auto=format&fit=crop",
+        bids: 18,
+    },
+];

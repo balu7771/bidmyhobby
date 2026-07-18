@@ -1,0 +1,73 @@
+# BidMyHobby AI
+
+BidMyHobby AI is a hobby marketplace with auction workflows, AI-assisted
+catalog creation, hobby-profile chat, and WhatsApp login.
+
+## Active applications
+
+- `apps/web`: Next.js frontend
+- `services/catalog`: catalog, image processing orchestration, and Bedrock moderation
+- `services/auction`: auction and bidding APIs
+- `services/hobby-ai`: hobby profiles, AI chat/search, and WhatsApp login
+- `services/api-gateway`: NGINX routing for the web and backend services
+- `lambdas/image-processor`: Python Lambda for image watermarking and business-card extraction
+
+See [docs/REPOSITORY_STRUCTURE.md](docs/REPOSITORY_STRUCTURE.md) for the full
+layout and the decisions used to create this repository.
+
+## Prerequisites
+
+- Docker with Docker Compose
+- Java 17 (for running backend builds outside Docker)
+- Node.js 20+ and npm
+- Python 3.12 and `zip` for packaging the Lambda
+
+## Configuration
+
+Copy the safe template and provide values locally:
+
+```bash
+cp .env.example .env
+```
+
+Never commit `.env`, cloud credentials, private keys, or generated deployment
+packages. The committed template contains placeholders only.
+
+## Run locally
+
+```bash
+docker compose -f docker-compose.local.yml --env-file .env config
+docker compose -f docker-compose.local.yml --env-file .env up --build
+```
+
+Open `http://localhost:8080`. The frontend is also exposed on port `3000`.
+
+## Build and validate
+
+```bash
+npm --prefix apps/web ci
+npm --prefix apps/web run build
+
+./services/catalog/mvnw -f services/catalog/pom.xml test
+./services/auction/mvnw -f services/auction/pom.xml test
+./services/hobby-ai/mvnw -f services/hobby-ai/pom.xml test
+
+python3 -m py_compile lambdas/image-processor/lambda_function.py
+```
+
+Build OCI-compatible images from the repository root:
+
+```bash
+./scripts/build-oci-images.sh
+```
+
+The script creates a generated image archive, which is ignored by Git.
+
+## Lambda packaging
+
+```bash
+./lambdas/image-processor/build.sh
+```
+
+The build installs Linux-compatible Pillow binaries and creates an ignored ZIP.
+Deploy with Python 3.12 and handler `lambda_function.lambda_handler`.

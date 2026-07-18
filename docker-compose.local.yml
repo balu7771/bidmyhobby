@@ -1,0 +1,94 @@
+x-business-common: &business-common
+  environment:
+    - SPRING_PROFILES_ACTIVE=docker
+    # Disable Eureka client for local K8s-style emulation
+    - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+    - EUREKA_CLIENT_FETCH_REGISTRY=false
+    # Inherit AWS credentials from .env in the parent directory
+    - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
+    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
+    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+    - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+  networks:
+    - bidmyhobby-network
+
+services:
+  # Local API Gateway (NGINX) - replacing Eureka and Spring Cloud Gateway
+  api-gateway:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./services/api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - bidmyhobby-network
+    depends_on:
+      - catalog-service
+      - auction-service
+      - frontend
+      - hobby-ai-service
+      # - payment-gateway-service
+      # - social-interaction-service
+
+  catalog-service:
+    <<: *business-common
+    build:
+      context: ./services/catalog
+      dockerfile: Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
+      - AWS_LAMBDA_IMAGE_PROCESSOR=${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
+    ports:
+      - "8081:8081"
+
+  auction-service:
+    <<: *business-common
+    build:
+      context: ./services/auction
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+
+  hobby-ai-service:
+    <<: *business-common
+    build:
+      context: ./services/hobby-ai
+      dockerfile: Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
+      - AWS_S3_AI_BUCKET_NAME=bidmyhobby-ai-profiles
+      - AWS_S3_AI_IMAGES_PREFIX=images/
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_BEDROCK_KB_ID=${AWS_BEDROCK_KB_ID:-dummy-kb-id}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+    ports:
+      - "8088:8088"
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+    ports:
+      - "3000:3000"
+    networks:
+      - bidmyhobby-network
+
+networks:
+  bidmyhobby-network:
+    driver: bridge
