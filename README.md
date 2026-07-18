@@ -15,6 +15,10 @@ catalog creation, hobby-profile chat, and WhatsApp login.
 See [docs/REPOSITORY_STRUCTURE.md](docs/REPOSITORY_STRUCTURE.md) for the full
 layout and the decisions used to create this repository.
 
+See
+[docs/CONVERSATIONAL_LISTING_WITH_GPT_5_6.md](docs/CONVERSATIONAL_LISTING_WITH_GPT_5_6.md)
+for an overview of the AI-assisted conversational listing workflow.
+
 ## Prerequisites
 
 - Docker with Docker Compose

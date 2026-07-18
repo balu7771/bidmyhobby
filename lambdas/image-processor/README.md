@@ -1,7 +1,16 @@
 # Image processor Lambda
 
-This Python 3.12 Lambda performs image watermarking and business-card text
-extraction for the catalog service.
+This Python 3.12 Lambda performs deterministic image processing for the catalog
+service:
+
+- Textract OCR
+- pixel-level redaction of lines containing phone numbers or email addresses
+- masked contact metadata
+- watermarking and JPEG normalization
+
+Hobby classification, safety moderation, descriptions, categories, and price
+suggestions are handled by the catalog service through OpenAI. The Lambda does
+not call an LLM and fails closed if OCR/redaction cannot complete.
 
 Build the deployment ZIP with:
 

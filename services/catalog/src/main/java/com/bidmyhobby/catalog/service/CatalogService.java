@@ -9,6 +9,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.math.BigDecimal;
+import java.util.UUID;
+import com.bidmyhobby.catalog.conversation.ListingConversation;
+import com.bidmyhobby.catalog.conversation.ListingDraftImage;
 
 @Service
 public class CatalogService {
@@ -116,6 +119,55 @@ public class CatalogService {
 
         System.out.println("⏳ Item upload accepted, processing in background: " + item.getItemId());
         return item;
+    }
+
+    /**
+     * Publishes an already moderated conversational draft. This deliberately bypasses
+     * the legacy Bedrock form-upload path: OpenAI analysis has already produced and
+     * classified the canonical draft before this method is called.
+     */
+    public Item publishConversationDraft(ListingConversation draft, List<ListingDraftImage> images,
+            boolean manualReview) throws Exception {
+        if (images == null || images.isEmpty()) throw new IllegalArgumentException("At least one image is required");
+        List<String> imageUrls = new java.util.ArrayList<>();
+        String itemId = UUID.randomUUID().toString();
+
+        for (int i = 0; i < images.size(); i++) {
+            ListingDraftImage image = images.get(i);
+            byte[] processed = imageProcessingService.processImage(image.getData(), draft.getOwnerId(), false);
+            String extension = extensionFor(image.getContentType());
+            String key = "images/" + itemId + "-" + (i + 1) + extension;
+            s3StorageService.uploadFile(key, processed, "image/jpeg");
+            imageUrls.add(s3StorageService.generateImageUrl(key));
+        }
+
+        Item item = new Item();
+        item.setItemId(itemId);
+        item.setName(draft.getTitle());
+        item.setDescription(maskContactDetails(draft.getDescription()));
+        item.setCreatorEmail(draft.getOwnerId());
+        item.setBasePrice(BigDecimal.valueOf(draft.getBasePrice()));
+        item.setSuggestedPrice(draft.getSuggestedPrice());
+        item.setCurrency(draft.getCurrency());
+        item.setSize(draft.getSize() == null || draft.getSize().isBlank() ? "N/A" : draft.getSize());
+        item.setCity(draft.getCity());
+        item.setCategory(draft.getCategory() == null ? "HOBBY" : draft.getCategory().toUpperCase());
+        item.setStatus(manualReview ? "REVIEW_REQUIRED" : "ACTIVE");
+        item.setImageUrl(imageUrls.get(0));
+        item.setImageUrls(imageUrls);
+        return s3StorageService.saveItem(item);
+    }
+
+    private String extensionFor(String contentType) {
+        if (contentType != null && contentType.contains("png")) return ".png";
+        if (contentType != null && contentType.contains("webp")) return ".webp";
+        return ".jpg";
+    }
+
+    private String maskContactDetails(String value) {
+        if (value == null) return null;
+        String masked = value.replaceAll("(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}", "[email hidden]");
+        return masked.replaceAll("(?<!\\d)(?:\\+?\\d[\\d .()-]{6,}\\d)(?!\\d)", "[phone hidden]");
     }
 
     @org.springframework.scheduling.annotation.Async

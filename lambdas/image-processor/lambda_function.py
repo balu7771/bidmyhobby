@@ -3,13 +3,12 @@ import json
 import re
 import boto3
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 # AWS clients — reused across warm invocations
 textract = boto3.client("textract", region_name="us-east-1")
-bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
-PHONE_RE = re.compile(r"(\+?[1-9]\d{1,14}|\(?\d{3}\)?[.\-\s]?\d{3}[.\-\s]?\d{4})")
+PHONE_RE = re.compile(r"(\+?[1-9]\d{6,14}|\(?\d{3}\)?[.\-\s]?\d{3}[.\-\s]?\d{4})")
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 WEBSITE_RE = re.compile(r"(https?://)?([a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})")
 INSTAGRAM_RE = re.compile(r"@([a-zA-Z0-9._]+)|instagram\.com/([a-zA-Z0-9._]+)")
@@ -50,7 +49,7 @@ def mask_phone(phone: str) -> str:
 # ── watermark ──────────────────────────────────────────────────────────────────
 
 def add_watermark(image_bytes: bytes, text: str) -> bytes:
-    img = Image.open(BytesIO(image_bytes)).convert("RGBA")
+    img = ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))).convert("RGBA")
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
@@ -73,6 +72,47 @@ def add_watermark(image_bytes: bytes, text: str) -> bytes:
     out = BytesIO()
     out_img.save(out, format="JPEG")
     return out.getvalue()
+
+
+def redact_contact_details(image_bytes: bytes) -> tuple[bytes, dict]:
+    """Redact OCR lines containing phone numbers or email addresses.
+
+    Textract returns normalized bounding boxes. Redacting the entire matching line
+    is intentionally conservative and avoids exposing adjacent fragments of a
+    formatted phone number.
+    """
+    response = textract.detect_document_text(Document={"Bytes": image_bytes})
+    image = ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    phones = []
+    emails = []
+    redactions = 0
+
+    for block in response.get("Blocks", []):
+        if block.get("BlockType") != "LINE":
+            continue
+        text = block.get("Text", "")
+        found_phones = PHONE_RE.findall(text)
+        found_emails = EMAIL_RE.findall(text)
+        if not found_phones and not found_emails:
+            continue
+        box = block.get("Geometry", {}).get("BoundingBox", {})
+        left = max(0, int(box.get("Left", 0) * image.width) - 6)
+        top = max(0, int(box.get("Top", 0) * image.height) - 4)
+        right = min(image.width, int((box.get("Left", 0) + box.get("Width", 0)) * image.width) + 6)
+        bottom = min(image.height, int((box.get("Top", 0) + box.get("Height", 0)) * image.height) + 4)
+        draw.rectangle((left, top, right, bottom), fill=(20, 20, 20))
+        redactions += 1
+        phones.extend(mask_phone(p if isinstance(p, str) else p[0]) for p in found_phones)
+        emails.extend(mask_email(e) for e in found_emails)
+
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=90, optimize=True)
+    return output.getvalue(), {
+        "redactionCount": redactions,
+        "maskedPhones": list(dict.fromkeys(phones)),
+        "maskedEmails": list(dict.fromkeys(emails)),
+    }
 
 
 # ── extraction helpers ─────────────────────────────────────────────────────────
@@ -116,49 +156,6 @@ def analyze_business_card(image_bytes: bytes) -> dict:
         return {"error": f"Failed to analyze business card: {e}"}
 
 
-# ── Bedrock content moderation ─────────────────────────────────────────────────
-
-def moderate_content(image_bytes: bytes) -> bool:
-    try:
-        payload = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": base64.b64encode(image_bytes).decode(),
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "Analyze this image and determine if it is appropriate for a business listing platform. "
-                                "Look for any inappropriate content, offensive material, or non-business related content. "
-                                "Respond with only 'APPROVED' or 'REJECTED' followed by a brief reason."
-                            ),
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": 100,
-            "anthropic_version": "bedrock-2023-05-31",
-        }
-
-        resp = bedrock.invoke_model(
-            modelId="amazon.nova-micro-v1:0",
-            body=json.dumps(payload),
-        )
-        result = json.loads(resp["body"].read())
-        text = result.get("content", [{}])[0].get("text", "").upper()
-        return "APPROVED" in text
-    except Exception:
-        return True  # default approve on failure
-
-
 # ── handler ────────────────────────────────────────────────────────────────────
 
 def lambda_handler(event, context):
@@ -171,16 +168,15 @@ def lambda_handler(event, context):
         masked_email = mask_email(email) if email else ""
         body = {}
 
+        # Redact contact information on every hobby image as well as business cards.
+        # If OCR fails, fail the invocation so catalog never publishes an image that
+        # may contain unredacted personal information.
+        redacted_bytes, redaction_info = redact_contact_details(image_bytes)
+        body["redaction"] = redaction_info
+
         if is_business_card:
             business_info = analyze_business_card(image_bytes)
             body["businessInfo"] = business_info
-
-            if not moderate_content(image_bytes):
-                body["contentApproved"] = False
-                body["error"] = "Content not approved for listing"
-                return {"statusCode": 400, "body": json.dumps(body)}
-
-            body["contentApproved"] = True
 
             # Use masked phone as watermark when available (last 4 digits only)
             if not watermark_text and business_info.get("phone"):
@@ -189,7 +185,7 @@ def lambda_handler(event, context):
         if not watermark_text:
             watermark_text = f"BidMyHobby | {masked_email}" if masked_email else "© BidMyHobby"
 
-        body["processedImage"] = base64.b64encode(add_watermark(image_bytes, watermark_text)).decode()
+        body["processedImage"] = base64.b64encode(add_watermark(redacted_bytes, watermark_text)).decode()
         body["maskedEmail"] = masked_email
         body["watermarkText"] = watermark_text
 

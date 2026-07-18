@@ -32,7 +32,7 @@ public class BedrockModerationService {
     @Value("${aws.bedrock.model-id:apac.amazon.nova-pro-v1:0}")
     private String bedrockModelId;
 
-    @Value("${aws.bedrock.guardrail.id}")
+    @Value("${aws.bedrock.guardrail.id:disabled}")
     private String guardrailId;
 
     @Value("${aws.bedrock.guardrail.version:DRAFT}")
