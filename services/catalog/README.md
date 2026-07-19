@@ -5,7 +5,7 @@ Catalog management service for BidMyHobby platform with enhanced business card p
 ## Features
 - Item catalog management
 - Small business listings via business card upload
-- AI-powered business card analysis using AWS Bedrock
+- Business card text extraction through the image-processing Lambda
 - Content moderation for business listings
 - Instagram integration for business profiles
 - Automated information extraction from visiting cards
@@ -14,8 +14,7 @@ Catalog management service for BidMyHobby platform with enhanced business card p
 - Upload business card images
 - Extract contact information (phone, email, website)
 - Detect Instagram profiles and fetch latest reel links
-- AI content moderation using AWS Bedrock Nova Micro
-- Automatic approval for appropriate content
+- OpenAI-powered conversational hobby listing analysis and moderation
 
 ## API Endpoints
 ### Small Business Management
@@ -28,10 +27,11 @@ Catalog management service for BidMyHobby platform with enhanced business card p
 ## Configuration
 - Port: 8081
 - Database: H2/MySQL
-- AWS Services: Lambda, Bedrock, Textract, S3
+- External services: OpenAI, Lambda, Textract, and S3
 
 ## Environment Variables
 - `AWS_ACCESS_KEY_ID`: AWS credentials
 - `AWS_SECRET_ACCESS_KEY`: AWS credentials
 - `AWS_DEFAULT_REGION`: AWS region
 - `AWS_S3_BUCKET_NAME`: S3 bucket for images
+- `OPENAI_API_KEY`: OpenAI API key for conversational listing analysis

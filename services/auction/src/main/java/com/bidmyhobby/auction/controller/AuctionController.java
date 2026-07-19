@@ -50,9 +50,9 @@ public class AuctionController {
                 return ResponseEntity.badRequest().body("Valid email or phone number required to place bids");
             }
 
-            // Check item status
+            Map<String, Object> item;
             try {
-                Map<String, Object> item = catalogServiceClient.getItem(itemId);
+                item = catalogServiceClient.getItem(itemId);
                 if (item == null) {
                     return ResponseEntity.badRequest().body("Item not found");
                 }
@@ -61,13 +61,18 @@ public class AuctionController {
                     return ResponseEntity.badRequest().body("Bidding is closed for this item - sale in progress");
                 }
             } catch (Exception e) {
-                // If catalog service is down, allow bid but log warning
-                System.out.println("⚠️ Could not verify item status: " + e.getMessage());
+                System.err.println("Could not verify item pricing: " + e.getMessage());
+                return ResponseEntity.status(503).body("Bidding is temporarily unavailable because item pricing could not be verified");
             }
 
-            // Validate bid amount
-            if (bidAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal minimumBid = minimumBid(item);
+            if (bidAmount.signum() <= 0) {
                 return ResponseEntity.badRequest().body("Bid amount must be greater than 0");
+            }
+            if (bidAmount.compareTo(minimumBid) < 0) {
+                return ResponseEntity.badRequest().body(
+                        "Bid amount must be at least " + minimumBid.toPlainString()
+                                + ", the lower of the AI estimate and seller asking price");
             }
 
             // Save bid to S3
@@ -82,12 +87,32 @@ public class AuctionController {
             response.put("message", "Bid placed successfully");
             response.put("itemId", itemId);
             response.put("bidAmount", bidAmount);
+            response.put("minimumBid", minimumBid);
             response.put("currency", "INR");
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error placing bid: " + e.getMessage());
+        }
+    }
+
+    static BigDecimal minimumBid(Map<String, Object> item) {
+        BigDecimal sellerPrice = positivePrice(item.get("basePrice"));
+        BigDecimal aiEstimate = positivePrice(item.get("suggestedPrice"));
+        if (sellerPrice == null && aiEstimate == null) return BigDecimal.ZERO;
+        if (sellerPrice == null) return aiEstimate;
+        if (aiEstimate == null) return sellerPrice;
+        return sellerPrice.min(aiEstimate);
+    }
+
+    private static BigDecimal positivePrice(Object value) {
+        if (value == null) return null;
+        try {
+            BigDecimal price = new BigDecimal(value.toString());
+            return price.signum() >= 0 ? price : null;
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 
@@ -227,4 +252,3 @@ public class AuctionController {
         }
     }
 }
-

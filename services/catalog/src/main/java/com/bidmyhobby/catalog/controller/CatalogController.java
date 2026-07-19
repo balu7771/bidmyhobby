@@ -71,28 +71,6 @@ public class CatalogController {
      * }
      */
 
-    @PostMapping("/items")
-    public ResponseEntity<?> uploadItem(
-            @RequestParam("files") List<MultipartFile> files,
-            @RequestParam("name") String name,
-            @RequestParam("description") String description,
-            @RequestParam("email") String email,
-            @RequestParam("basePrice") Double basePrice,
-            @RequestParam("currency") String currency,
-            @RequestParam("size") String size,
-            @RequestParam(value = "city", required = false) String city,
-            @RequestParam(value = "category", required = false, defaultValue = "HOBBY") String category) {
-        try {
-            Item savedItem = catalogService.uploadItem(files, name, description, email, basePrice, currency, size, city, category);
-
-            // Notification is now handled asynchronously in CatalogService implementation
-
-            return ResponseEntity.ok(savedItem);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
-        }
-    }
-
     @GetMapping("/items/{itemId}/creator/{email}")
     public ResponseEntity<List<Item>> getItemsByCreator(@PathVariable String email) {
         return ResponseEntity.ok(catalogService.getItemsByCreator(email));

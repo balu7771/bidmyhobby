@@ -6,7 +6,7 @@ import com.twilio.type.PhoneNumber;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
-import com.bidmyhobby.hobbyaibackend.ai.AiClientConfig.BedrockChatService;
+import com.bidmyhobby.hobbyaibackend.ai.OpenAiChatService;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.Optional;
 import java.util.Random;
@@ -30,10 +30,10 @@ public class WhatsAppAgentService {
 
     private final WhatsAppSessionRepository sessionRepository;
     private final OtpCacheRepository otpCacheRepository;
-    private final BedrockChatService chatClient;
+    private final OpenAiChatService chatClient;
 
     @Autowired
-    public WhatsAppAgentService(WhatsAppSessionRepository sessionRepository, OtpCacheRepository otpCacheRepository, BedrockChatService chatClient) {
+    public WhatsAppAgentService(WhatsAppSessionRepository sessionRepository, OtpCacheRepository otpCacheRepository, OpenAiChatService chatClient) {
         this.sessionRepository = sessionRepository;
         this.otpCacheRepository = otpCacheRepository;
         this.chatClient = chatClient;
@@ -285,7 +285,7 @@ public class WhatsAppAgentService {
                 case "COMPLETED":
                 case "START":
                 default:
-                    // Use Bedrock ChatClient for generic replies
+                    // Use OpenAI for generic replies
                     try {
                         String aiReply = chatClient.chat("You are a helpful WhatsApp assistant for BidMyHobby. The user says: " + body + ". Briefly explain they can send an image of their hobby item to start uploading.");
                         reply = aiReply;

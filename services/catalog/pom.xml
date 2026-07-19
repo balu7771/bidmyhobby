@@ -70,13 +70,6 @@
 			<version>${aws.sdk.version}</version>
 		</dependency>
 
-		<!-- Legacy form upload still uses Bedrock until that compatibility endpoint is retired. -->
-		<dependency>
-			<groupId>software.amazon.awssdk</groupId>
-			<artifactId>bedrockruntime</artifactId>
-			<version>${aws.sdk.version}</version>
-		</dependency>
-
 		<!-- AWS S3 sdk -->
 		<dependency>
 			<groupId>software.amazon.awssdk</groupId>

@@ -201,7 +201,7 @@ export default function Dashboard() {
                         {search ? `${filtered.length} results` : `${profiles.length} Hobbyists`}
                     </h3>
                     <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                        Powered by <span className="text-indigo-400 font-bold">Bedrock Claude</span>
+                        Powered by <span className="text-indigo-400 font-bold">OpenAI</span>
                     </span>
                 </div>
 

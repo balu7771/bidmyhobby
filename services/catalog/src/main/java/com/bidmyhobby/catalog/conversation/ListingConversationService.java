@@ -46,7 +46,6 @@ public class ListingConversationService {
         return response(owned(id, ownerId), null);
     }
 
-    @Transactional
     public ListingConversationResponse addImages(String id, String ownerId, List<MultipartFile> files) throws Exception {
         ListingConversation c = owned(id, ownerId);
         if (terminal(c)) throw new IllegalStateException("This conversation can no longer be changed");
@@ -66,17 +65,22 @@ public class ListingConversationService {
         }
         append(c, "user", "[Added " + files.size() + " image" + (files.size() == 1 ? "" : "s") + "]");
         c.setState("COLLECTING");
-        conversations.save(c);
+        c = conversations.save(c);
         return analyze(c);
     }
 
-    @Transactional
     public ListingConversationResponse message(String id, String ownerId, String message) {
         ListingConversation c = owned(id, ownerId);
         if (terminal(c)) throw new IllegalStateException("This conversation can no longer be changed");
         if (message == null || message.isBlank()) throw new IllegalArgumentException("message is required");
-        append(c, "user", message.trim());
-        conversations.save(c);
+        String userMessage = message.trim();
+        Optional<Double> statedPrice = extractSellerAskingPrice(userMessage);
+        if (statedPrice.isPresent()) {
+            c.setBasePrice(statedPrice.get());
+            c.setPriceConfirmed(true);
+        }
+        append(c, "user", userMessage);
+        c = conversations.save(c);
         if (images.countByConversationId(id) == 0) {
             String reply = "Please add at least one clear photo so I can identify and moderate the item.";
             append(c, "assistant", reply);
@@ -106,16 +110,16 @@ public class ListingConversationService {
         return response(conversations.save(c), null);
     }
 
-    @Transactional
     public ListingConversationResponse publish(String id, String ownerId) throws Exception {
         ListingConversation c = owned(id, ownerId);
         if (c.getPublishedItemId() != null) return response(c, "This listing has already been published.");
         if (!c.isSafe() || !c.isHobbyItem()) throw new IllegalStateException("Only approved hobby items can be published");
         if (!ready(c)) throw new IllegalStateException("Review and confirm all required listing details first");
         c.setState("PUBLISHING");
-        conversations.save(c);
+        c = conversations.saveAndFlush(c);
         boolean manualReview = c.getConfidence() < AUTO_PUBLISH_CONFIDENCE;
         Item item = catalog.publishConversationDraft(c, images.findByConversationIdOrderByCreatedAtAsc(id), manualReview);
+        c = owned(id, ownerId);
         c.setPublishedItemId(item.getItemId());
         c.setState(manualReview ? "REVIEW_REQUIRED" : "PUBLISHED");
         append(c, "assistant", manualReview
@@ -135,9 +139,11 @@ public class ListingConversationService {
 
     private ListingConversationResponse analyze(ListingConversation c) {
         c.setState("ANALYZING");
-        conversations.save(c);
+        c = conversations.saveAndFlush(c);
         OpenAiListingService.ListingAnalysis a =
                 openAi.analyze(c.getTranscriptJson(), images.findByConversationIdOrderByCreatedAtAsc(c.getId()));
+        c = conversations.findById(c.getId())
+                .orElseThrow(() -> new NoSuchElementException("Conversation not found"));
         c.setHobbyItem(a.hobbyItem());
         c.setSafe(a.safe());
         c.setConfidence(a.confidence());
@@ -151,7 +157,14 @@ public class ListingConversationService {
         c.setDescription(maskContact(a.description()));
         c.setCategory(a.category());
         c.setConditionLabel(a.condition());
-        c.setSuggestedPrice(a.suggestedPrice());
+        // Retain the first independent AI valuation. Seller messages must never rewrite it.
+        if (c.getSuggestedPrice() == null) {
+            c.setSuggestedPrice(a.suggestedPrice());
+        }
+        if (a.sellerAskingPrice() != null && !c.isPriceConfirmed()) {
+            c.setBasePrice(a.sellerAskingPrice());
+            c.setPriceConfirmed(true);
+        }
         if (notBlank(a.city())) c.setCity(a.city());
         if (notBlank(a.size())) c.setSize(a.size());
         c.setState(a.readyForReview() && ready(c) ? "READY_FOR_REVIEW" : "NEEDS_INFORMATION");
@@ -171,7 +184,7 @@ public class ListingConversationService {
         if (!notBlank(c.getTitle())) missing.add("title");
         if (!notBlank(c.getDescription())) missing.add("description");
         if (!notBlank(c.getCity())) missing.add("city");
-        if (!c.isPriceConfirmed() || c.getBasePrice() == null) missing.add("confirmedPrice");
+        if (!c.isPriceConfirmed() || c.getBasePrice() == null) missing.add("askingPrice");
         List<ListingConversationResponse.ImageSummary> imageList =
                 images.findByConversationIdOrderByCreatedAtAsc(c.getId()).stream()
                         .map(i -> new ListingConversationResponse.ImageSummary(i.getId(), i.getFilename(), i.getContentType()))
@@ -225,6 +238,19 @@ public class ListingConversationService {
     private Double asDouble(Object value) {
         if (value instanceof Number n) return n.doubleValue();
         return Double.valueOf(value.toString());
+    }
+    private Optional<Double> extractSellerAskingPrice(String message) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "(?i)(?:my\\s+asking\\s+price|asking\\s+price|asking|i\\s+want|price\\s+is|sell(?:\\s+it)?\\s+for)"
+                        + "\\s*(?:is|of|:|-)?\\s*(?:₹|rs\\.?|inr)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)")
+                .matcher(message);
+        if (!matcher.find()) return Optional.empty();
+        try {
+            double price = Double.parseDouble(matcher.group(1).replace(",", ""));
+            return price >= 0 ? Optional.of(price) : Optional.empty();
+        } catch (NumberFormatException ignored) {
+            return Optional.empty();
+        }
     }
     private String safeFilename(String filename) {
         return filename == null ? "image.jpg" : filename.replaceAll("[^a-zA-Z0-9._-]", "_");

@@ -114,10 +114,20 @@ public class OpenAiListingService {
 
                 Separately assess safety and hobby relevance. Do not infer contact details or include
                 phone numbers, email addresses, social handles, or addresses in title/description.
-                Be conservative about identity, authenticity, condition, and price. If uncertain,
-                say so. suggestedPrice is an INR estimate, never a promise. Ask exactly one concise
-                follow-up question for the most important missing fact. Set readyForReview only when
-                title, description, category, condition, city, and enough price context are present.
+                Be conservative about identity, authenticity and condition.
+
+                Pricing has two independent meanings:
+                - suggestedPrice is your own INR market-value estimate based on the item. Never copy
+                  a price stated by the seller into suggestedPrice and do not change your estimate
+                  merely to agree with the seller.
+                - sellerAskingPrice is the amount the seller explicitly says they want. Extract
+                  natural statements such as "asking 1500", "I want ₹1,500", "price is 1500", or
+                  "sell it for 1500". Return null when the seller has not stated an asking price.
+
+                Ask exactly one short, friendly follow-up question for the most important missing
+                detail. Do not ask the seller to confirm the AI estimate if they already stated
+                their own asking price. Set readyForReview only when title, description, category,
+                condition, city, and a seller asking price are present.
 
                 Conversation JSON:
                 """ + transcriptJson;
@@ -134,6 +144,10 @@ public class OpenAiListingService {
         props.put("category", Map.of("type", "string"));
         props.put("condition", Map.of("type", "string"));
         props.put("suggestedPrice", Map.of("type", "number", "minimum", 0));
+        props.put("sellerAskingPrice", Map.of(
+                "anyOf", List.of(
+                        Map.of("type", "number", "minimum", 0),
+                        Map.of("type", "null"))));
         props.put("city", Map.of("type", "string"));
         props.put("size", Map.of("type", "string"));
         props.put("assistantMessage", Map.of("type", "string"));
@@ -148,6 +162,6 @@ public class OpenAiListingService {
 
     public record ListingAnalysis(boolean hobbyItem, boolean safe, double confidence,
             String moderationReason, String title, String description, String category,
-            String condition, double suggestedPrice, String city, String size,
+            String condition, double suggestedPrice, Double sellerAskingPrice, String city, String size,
             String assistantMessage, boolean readyForReview, List<String> missingFields) {}
 }

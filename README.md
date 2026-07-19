@@ -6,7 +6,7 @@ catalog creation, hobby-profile chat, and WhatsApp login.
 ## Active applications
 
 - `apps/web`: Next.js frontend
-- `services/catalog`: catalog, image processing orchestration, and Bedrock moderation
+- `services/catalog`: catalog, image processing orchestration, and OpenAI listing analysis
 - `services/auction`: auction and bidding APIs
 - `services/hobby-ai`: hobby profiles, AI chat/search, and WhatsApp login
 - `services/api-gateway`: NGINX routing for the web and backend services

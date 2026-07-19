@@ -26,7 +26,7 @@ bidmyhobby/
 | --- | --- |
 | `apps/web` | Next.js user interface |
 | `services/api-gateway` | NGINX reverse-proxy configuration |
-| `services/catalog` | Catalog APIs, S3 integration, Bedrock moderation, and Lambda invocation |
+| `services/catalog` | Catalog APIs, S3 integration, OpenAI listing analysis, and Lambda invocation |
 | `services/auction` | Auction and bid APIs |
 | `services/hobby-ai` | Hobby profiles, AI chat/search, and WhatsApp authentication |
 | `lambdas/image-processor` | Image watermarking and Textract-based business-card extraction |
@@ -37,7 +37,7 @@ bidmyhobby/
 Payment, notification, social-interaction, auth, AI-adapter, Eureka, Config
 Server, and the legacy Spring API gateway are not part of the current
 `docker-compose.oci.yml` architecture. The older AI-moderation Lambda was also
-excluded because active moderation is performed directly through Bedrock.
+excluded because active listing analysis is performed through OpenAI.
 
 Generated dependencies, build output, local databases, session files, nested
 Git metadata, populated environment files, credentials, and private keys are

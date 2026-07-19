@@ -44,6 +44,13 @@ function formatCurrency(amount: number | null | undefined, currency: string | nu
 
 const CURRENCY_SYMBOLS: Record<string, string> = { INR: "₹", GBP: "£", USD: "$" };
 
+function biddingFloor(item: any): number {
+    const prices = [item?.basePrice, item?.suggestedPrice]
+        .map(Number)
+        .filter(price => Number.isFinite(price) && price >= 0);
+    return prices.length ? Math.min(...prices) : 0;
+}
+
 /** Parses contact fields appended to a business card description by the backend.
  *  Format: "Some description\nPhone: ****1234\nEmail: foo@bar.com\n..." */
 function parseBusinessContact(description: string | null | undefined): {
@@ -278,20 +285,15 @@ function HomeContent() {
         if (!userEmail) return;
 
         const bidVal = parseFloat(newBidAmount);
-        const minBid = selectedItem?.basePrice ?? 0;
-        const maxWarn = selectedItem?.suggestedPrice ? selectedItem.suggestedPrice * 10 : Infinity;
+        const minBid = biddingFloor(selectedItem);
         const cur = selectedItem?.currency || "INR";
 
         if (isNaN(bidVal) || bidVal <= 0) {
             setBidError("Please enter a valid bid amount."); return;
         }
         if (bidVal < minBid) {
-            setBidError(`Your bid must be at least ${formatCurrency(minBid, cur)} (the seller's asking price).`); return;
+            setBidError(`Your bid must be at least ${formatCurrency(minBid, cur)}, the lower of the AI estimate and seller asking price.`); return;
         }
-        if (bidVal > maxWarn) {
-            setBidError(`Bid seems unusually high. Maximum accepted is ${formatCurrency(maxWarn, cur)}.`); return;
-        }
-
         setIsLoading(true);
         setBidError(null);
         setBidSuccess(null);
@@ -854,7 +856,8 @@ function HomeContent() {
                                     
                                     {/* Price & Specs — hidden for business/visiting cards */}
                                     {selectedItem.category !== 'BUSINESS' && (
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-3">
+                                          <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex flex-col justify-center">
                                                 <span className="text-slate-400 text-xs block mb-1">A.I Estimated Value</span>
                                                 <span className="text-emerald-400 font-mono text-xl font-bold">
@@ -867,6 +870,10 @@ function HomeContent() {
                                                     {formatCurrency(selectedItem.basePrice, selectedItem.currency)}
                                                 </span>
                                             </div>
+                                          </div>
+                                          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                                            Bidding starts at <strong>{formatCurrency(biddingFloor(selectedItem), selectedItem.currency)}</strong>, the lower of these two prices.
+                                          </div>
                                         </div>
                                     )}
 
@@ -964,10 +971,10 @@ function HomeContent() {
                                                                 type="number" 
                                                                 step="0.01" 
                                                                 required
-                                                                min={selectedItem.basePrice || 0}
+                                                                min={biddingFloor(selectedItem)}
                                                                 value={newBidAmount}
                                                                 onChange={(e) => setNewBidAmount(e.target.value)}
-                                                                placeholder={`Min ${formatCurrency(selectedItem.basePrice, selectedItem.currency)}`}
+                                                                placeholder={`Min ${formatCurrency(biddingFloor(selectedItem), selectedItem.currency)}`}
                                                                 className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-blue-500/50 outline-none"
                                                             />
                                                         </div>

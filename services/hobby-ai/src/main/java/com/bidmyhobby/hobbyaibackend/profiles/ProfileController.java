@@ -1,6 +1,5 @@
 package com.bidmyhobby.hobbyaibackend.profiles;
 
-import com.bidmyhobby.hobbyaibackend.config.BedrockKnowledgeBaseService;
 import com.bidmyhobby.hobbyaibackend.config.ImageStorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,16 +16,16 @@ public class ProfileController {
 
     private final ProfileRepository profileRepository;
     private final ImageStorageService imageStorageService;
-    private final BedrockKnowledgeBaseService knowledgeBaseService;
+    private final ProfileSearchService profileSearchService;
     private final SimpleProfileService simpleProfileService;
 
     public ProfileController(ProfileRepository profileRepository, 
                            ImageStorageService imageStorageService,
-                           BedrockKnowledgeBaseService knowledgeBaseService,
+                           ProfileSearchService profileSearchService,
                            SimpleProfileService simpleProfileService) {
         this.profileRepository = profileRepository;
         this.imageStorageService = imageStorageService;
-        this.knowledgeBaseService = knowledgeBaseService;
+        this.profileSearchService = profileSearchService;
         this.simpleProfileService = simpleProfileService;
     }
 
@@ -67,7 +66,7 @@ public class ProfileController {
     public ResponseEntity<List<Profile>> searchProfiles(
             @RequestParam String query,
             @RequestParam(defaultValue = "5") int maxResults) {
-        List<Profile> profiles = knowledgeBaseService.searchProfiles(query, maxResults);
+        List<Profile> profiles = profileSearchService.searchProfiles(query, maxResults);
         return ResponseEntity.ok(profiles);
     }
     
