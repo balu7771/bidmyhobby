@@ -17,8 +17,8 @@ x-business-common: &business-common
 x-springboot-healthcheck: &springboot-healthcheck
   interval: 15s
   timeout: 5s
-  retries: 5
-  start_period: 180s   # Allow up to 3 min for slow OCI/emulated startups
+  retries: 10
+  start_period: 360s   # The 1 GB OCI host can take 3-5 min while three JVMs start
 
 services:
   api-gateway:
@@ -113,7 +113,9 @@ services:
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "/app/app.jar"]
     healthcheck:
       <<: *springboot-healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      # Hobby AI does not include Actuator. This lightweight endpoint verifies
+      # that its HTTP server, database, and initial profile loading are ready.
+      test: ["CMD", "curl", "-f", "http://localhost:8088/api/profiles?page=0&size=1"]
     restart: unless-stopped
 
   frontend:
