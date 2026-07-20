@@ -50,7 +50,6 @@ public class HobbyAiBackendApplication implements CommandLineRunner {
 		
 		if (Boolean.TRUE.equals(initializeProfiles)) {
 			System.out.println("Initializing profiles (startup-actions.initializeProfiles=true)");
-			clearAllData();
 			profileCreationService.createProfiles(0);
 		} else if (existingProfileCount == 0) {
 			System.out.println("No existing profiles found, loading from S3");

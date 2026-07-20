@@ -76,7 +76,6 @@ public class ProfileController {
     
     @PostMapping("/refresh")
     public ResponseEntity<String> refreshProfiles() {
-        profileRepository.deleteAll();
         simpleProfileService.saveProfilesToDB();
         return ResponseEntity.ok("Profiles refreshed from S3");
     }
