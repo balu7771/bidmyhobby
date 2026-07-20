@@ -340,6 +340,20 @@ function HomeContent() {
         }
     };
 
+    const bidRequestError = async (response: Response) => {
+        const fallback = response.status >= 500
+            ? "Bidding is temporarily unavailable. Your bid was not placed. Please try again in a moment."
+            : "We couldn’t place your bid. Please check the amount and try again.";
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) return fallback;
+        try {
+            const body = await response.json();
+            return typeof body?.error === "string" && body.error.trim() ? body.error : fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
     const handlePlaceBid = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!userEmail) return;
@@ -370,8 +384,7 @@ function HomeContent() {
                 })
             });
             if (!res.ok) {
-                const errText = await res.text();
-                throw new Error(errText || "Failed to place bid");
+                throw new Error(await bidRequestError(res));
             }
             setBidSuccess(`Bid of ${formatCurrency(bidVal, cur)} placed successfully!`);
             setNewBidAmount("");

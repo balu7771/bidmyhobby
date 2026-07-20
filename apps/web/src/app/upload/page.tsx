@@ -18,6 +18,8 @@ type Conversation = {
 type Action = "starting" | "analyzing" | "sending" | "saving" | "publishing" | "deleting" | null;
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const MAX_IMAGE_BYTES = 13 * 1024 * 1024;
+const MAX_IMAGES = 4;
 
 export default function UploadPage() {
   const router = useRouter();
@@ -89,8 +91,26 @@ export default function UploadPage() {
 
   async function addImages(files: FileList | null) {
     if (!chat || !files?.length || busy) return;
+    const selectedFiles = Array.from(files);
+    if (chat.images.length + selectedFiles.length > MAX_IMAGES) {
+      setError(`You can upload up to ${MAX_IMAGES} photos per listing.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    const oversized = selectedFiles.find(file => file.size > MAX_IMAGE_BYTES);
+    if (oversized) {
+      setError(`“${oversized.name}” is larger than 13 MB. Choose a smaller photo and try again.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    const unsupported = selectedFiles.find(file => !file.type.startsWith("image/"));
+    if (unsupported) {
+      setError(`“${unsupported.name}” is not a supported image file.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     const form = new FormData();
-    Array.from(files).forEach(file => form.append("files", file));
+    selectedFiles.forEach(file => form.append("files", file));
     setAction("analyzing"); setError("");
     try {
       setChat(await call(`${API}/catalog/listing-conversations/${chat.conversationId}/images?ownerId=${encodeURIComponent(owner)}`, { method: "POST", body: form }));
@@ -207,9 +227,10 @@ export default function UploadPage() {
           <footer className="border-t border-white/10 p-4">
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {chat?.images.map(image => <div key={image.imageId} className="flex min-w-0 items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate">{image.filename}</span><button aria-label={`Remove ${image.filename}`} disabled={busy} onClick={() => removeImage(image.imageId)}><Trash2 className="h-4 w-4 text-red-300" /></button></div>)}
-              {(chat?.images.length || 0) < 4 && <button disabled={busy || !chat} onClick={() => fileRef.current?.click()} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 px-3 py-2 text-xs disabled:opacity-40"><ImagePlus className="h-4 w-4" /> Add photos</button>}
+              {(chat?.images.length || 0) < MAX_IMAGES && <button disabled={busy || !chat} onClick={() => fileRef.current?.click()} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 px-3 py-2 text-xs disabled:opacity-40"><ImagePlus className="h-4 w-4" /> Add photos</button>}
               <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={event => addImages(event.target.files)} />
             </div>
+            <p className="mb-3 text-xs text-slate-500">Up to 4 photos, maximum 13 MB each. This limit also applies on mobile.</p>
             <form onSubmit={send} className="flex gap-2">
               <input value={text} onChange={event => setText(event.target.value)} disabled={busy || !chat} placeholder={hasPhotos ? "Add condition, history, city or price…" : "Add photos first, then describe your item…"} className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-blue-400 disabled:opacity-50" />
               <button aria-label="Send" disabled={busy || !text.trim() || !chat} className="rounded-xl bg-blue-600 px-4 disabled:opacity-40"><Send className="h-5 w-5" /></button>
