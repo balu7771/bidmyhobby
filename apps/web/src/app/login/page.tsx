@@ -9,7 +9,10 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || "/upload";
+  const requestedReturnTo = searchParams.get("returnTo");
+  const returnTo = requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//")
+    ? requestedReturnTo
+    : "/";
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -53,7 +56,7 @@ function LoginForm() {
       localStorage.setItem("userEmail", data.email);
       localStorage.setItem("userRole", data.role);
       window.dispatchEvent(new Event("userLogin"));
-      router.push(returnTo);
+      router.replace(returnTo);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   }
 

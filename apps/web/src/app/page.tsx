@@ -218,6 +218,7 @@ function HomeContent() {
     const [modalImageIndex, setModalImageIndex] = useState(0);
     const [fullScreenImage, setFullScreenImage] = useState(false);
     const [bids, setBids] = useState<any[]>([]);
+    const [auctionBidSummaries, setAuctionBidSummaries] = useState<Record<string, { count: number; highestBid: number | null }>>({});
     const [newBidAmount, setNewBidAmount] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
     const [bidError, setBidError] = useState<string | null>(null);
@@ -263,6 +264,56 @@ function HomeContent() {
         setUserEmail(localStorage.getItem("userEmail"));
         loadItems();
     }, []);
+
+    useEffect(() => {
+        const requestedItemId = searchParams.get("bidItem");
+        if (!requestedItemId || selectedItem || realItems.length === 0) return;
+        const requestedItem = realItems.find(item =>
+            item.itemId === requestedItemId && item.status === "ACTIVE" && !isDisplayOnly(item)
+        );
+        if (requestedItem) {
+            setSelectedItem(requestedItem);
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete("bidItem");
+            window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+        }
+    }, [realItems, searchParams, selectedItem]);
+
+    useEffect(() => {
+        const activeAuctions = realItems.filter(item =>
+            item.status === "ACTIVE" && item.category !== "BUSINESS" && !isDisplayOnly(item)
+        );
+        if (activeAuctions.length === 0) {
+            setAuctionBidSummaries({});
+            return;
+        }
+
+        let cancelled = false;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+        Promise.all(activeAuctions.map(async item => {
+            try {
+                const response = await fetch(`${apiUrl}/auction/bids/get`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ itemId: item.itemId })
+                });
+                if (!response.ok) return [item.itemId, { count: 0, highestBid: null }] as const;
+                const itemBids = await response.json();
+                const amounts = itemBids
+                    .map((bid: any) => Number(bid.bidAmount))
+                    .filter((amount: number) => Number.isFinite(amount));
+                return [item.itemId, {
+                    count: itemBids.length,
+                    highestBid: amounts.length ? Math.max(...amounts) : null
+                }] as const;
+            } catch {
+                return [item.itemId, { count: 0, highestBid: null }] as const;
+            }
+        })).then(entries => {
+            if (!cancelled) setAuctionBidSummaries(Object.fromEntries(entries));
+        });
+        return () => { cancelled = true; };
+    }, [realItems]);
 
     useEffect(() => {
         if (selectedItem) {
@@ -324,6 +375,16 @@ function HomeContent() {
             }
             setBidSuccess(`Bid of ${formatCurrency(bidVal, cur)} placed successfully!`);
             setNewBidAmount("");
+            setAuctionBidSummaries(previous => {
+                const current = previous[selectedItem.itemId] || { count: 0, highestBid: null };
+                return {
+                    ...previous,
+                    [selectedItem.itemId]: {
+                        count: current.count + 1,
+                        highestBid: Math.max(current.highestBid ?? bidVal, bidVal)
+                    }
+                };
+            });
             fetchBids(selectedItem.itemId);
 
             // Notify seller via WhatsApp if their identity is a phone number
@@ -470,7 +531,7 @@ function HomeContent() {
                             className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 group"
                         >
                             <Upload className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                            Upload your hobby or business idea (visiting card)
+                            Upload your hobby
                         </Link>
                         <button 
                             onClick={() => {
@@ -601,46 +662,68 @@ function HomeContent() {
                     </div>
 
                     <div className="flex overflow-x-auto hide-scrollbar snap-x snap-mandatory pb-6 -mx-4 px-4 md:grid md:grid-cols-3 gap-6">
-                        {liveAuctionsData.map((auction, index) => (
+                        {liveAuctionsData.map((auction, index) => {
+                            const summary = auctionBidSummaries[auction.itemId] || { count: 0, highestBid: null };
+                            const returnTo = `/?bidItem=${encodeURIComponent(auction.itemId)}`;
+                            return (
                             <motion.div
                                 key={auction.itemId}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
                                 onClick={() => setSelectedItem(auction)}
-                                className="snap-center shrink-0 w-[85vw] md:w-auto glass-panel p-4 flex gap-5 group hover:bg-white/10 transition-colors cursor-pointer"
+                                className="snap-center shrink-0 w-[85vw] md:w-auto glass-panel p-4 group hover:bg-white/10 transition-colors cursor-pointer"
                             >
-                                <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-black/40">
-                                    {(auction.imageUrls?.[0] || auction.imageUrl) && (
-                                        <img
-                                            src={getCatalogImageUrl(auction.imageUrls?.[0] || auction.imageUrl)}
-                                            alt={auction.name}
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                                        />
-                                    )}
-                                </div>
-                                <div className="flex flex-col justify-between flex-1">
-                                    <div>
-                                        <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">
-                                            {auction.category || 'HOBBY'}
-                                        </span>
-                                        <h4 className="font-semibold text-white mt-1 line-clamp-2">{auction.name}</h4>
+                                <div className="flex gap-4">
+                                    <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-black/40">
+                                        {(auction.imageUrls?.[0] || auction.imageUrl) && (
+                                            <img
+                                                src={getCatalogImageUrl(auction.imageUrls?.[0] || auction.imageUrl)}
+                                                alt={auction.name}
+                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                            />
+                                        )}
                                     </div>
-                                    <div className="flex items-end justify-between mt-2 flex-wrap gap-2">
+                                    <div className="flex min-w-0 flex-1 flex-col justify-between">
                                         <div>
-                                            <span className="text-xs text-slate-400 block mb-0.5">Starting From</span>
-                                            <span className="font-mono text-emerald-400 font-medium">{formatCurrency(auction.basePrice, auction.currency)}</span>
+                                            <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">
+                                                {auction.category || 'HOBBY'}
+                                            </span>
+                                            <h4 className="font-semibold text-white mt-1 line-clamp-2">{auction.name}</h4>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="text-xs text-emerald-400 font-medium flex items-center justify-end gap-1">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                Active
+                                        <div className="mt-2">
+                                            <span className="text-xs text-slate-400 block mb-0.5">
+                                                {summary.highestBid != null ? "Current highest bid" : "Bidding starts at"}
+                                            </span>
+                                            <span className="font-mono text-emerald-400 font-semibold">
+                                                {formatCurrency(summary.highestBid ?? biddingFloor(auction), auction.currency)}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
+                                <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                                    <span className="text-xs text-slate-400">
+                                        {summary.count === 0 ? "No bids yet" : `${summary.count} bid${summary.count === 1 ? "" : "s"}`}
+                                    </span>
+                                    {userEmail ? (
+                                        <button
+                                            onClick={event => { event.stopPropagation(); setSelectedItem(auction); }}
+                                            className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 sm:flex-none"
+                                        >
+                                            <Gavel className="h-4 w-4" /> Place Bid
+                                        </button>
+                                    ) : (
+                                        <Link
+                                            href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+                                            onClick={event => event.stopPropagation()}
+                                            className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 sm:flex-none"
+                                        >
+                                            <Gavel className="h-4 w-4" /> Place Bid
+                                        </Link>
+                                    )}
+                                </div>
                             </motion.div>
-                        ))}
+                        )})}
                     </div>
                 </section>
             )}
@@ -1003,7 +1086,7 @@ function HomeContent() {
                                             ) : (
                                                 <div className="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
                                                     <p className="text-slate-400 text-sm mb-3">You must be logged in to place a bid.</p>
-                                                    <Link href="/login" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg inline-block transition-colors">
+                                                    <Link href={`/login?returnTo=${encodeURIComponent(`/?bidItem=${selectedItem.itemId}`)}`} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg inline-block transition-colors">
                                                         Log In to Bid
                                                     </Link>
                                                 </div>

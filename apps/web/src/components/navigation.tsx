@@ -96,7 +96,7 @@ export function Navigation() {
         ) : (
             <div className="mt-auto px-3 pb-4 pt-3 border-t border-white/5">
                 <Link
-                    href="/login"
+                    href={`/login?returnTo=${encodeURIComponent(pathname || "/")}`}
                     className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 transition-all"
                 >
                     <Mail className="w-4 h-4" /> Login with Email
@@ -212,7 +212,7 @@ export function Navigation() {
                                 </button>
                             </>
                         ) : (
-                            <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}
+                            <Link href={`/login?returnTo=${encodeURIComponent(pathname || "/")}`} onClick={() => setIsMobileMenuOpen(false)}
                                 className="flex items-center justify-center gap-2 w-full px-6 py-4 rounded-2xl font-semibold bg-emerald-600/20 border border-emerald-500/30 text-emerald-300">
                                 <Mail className="w-5 h-5" /> Login with Email
                             </Link>
@@ -250,7 +250,7 @@ export function Navigation() {
                             Logout
                         </button>
                     ) : (
-                        <Link href="/login"
+                        <Link href={`/login?returnTo=${encodeURIComponent(pathname || "/")}`}
                             className="flex flex-col items-center gap-1 p-2 rounded-xl text-[10px] font-medium text-emerald-500 min-w-[60px]">
                             <MessageCircle className="w-5 h-5 mb-0.5" />
                             Login
