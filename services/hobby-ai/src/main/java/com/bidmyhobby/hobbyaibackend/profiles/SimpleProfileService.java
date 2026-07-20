@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -22,6 +23,16 @@ public class SimpleProfileService {
     }
     
     public void saveProfilesToDB() {
+        saveProfilesToDB(0);
+    }
+
+    public synchronized void ensureProfilesAvailable(int requiredCount) {
+        if (profileRepository.count() < requiredCount) {
+            saveProfilesToDB(requiredCount);
+        }
+    }
+
+    public void saveProfilesToDB(int maxProfiles) {
         try {
             List<Profile> profiles;
             try (var input = s3Service.getProfilesJson()) {
@@ -29,6 +40,10 @@ public class SimpleProfileService {
             }
             
             if (profiles != null && !profiles.isEmpty()) {
+                profiles.sort(Comparator.comparing(Profile::getId));
+                if (maxProfiles > 0 && profiles.size() > maxProfiles) {
+                    profiles = profiles.subList(0, maxProfiles);
+                }
                 // Update image URLs to S3 paths
                 profiles.forEach(profile -> {
                     if (profile.getImageUrl() != null && !profile.getImageUrl().startsWith("http")) {

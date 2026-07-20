@@ -3,6 +3,8 @@ package com.bidmyhobby.hobbyaibackend.profiles;
 import com.bidmyhobby.hobbyaibackend.config.ImageStorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 import com.bidmyhobby.hobbyaibackend.auth.AuthTokenService;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,23 +21,33 @@ public class ProfileController {
     private final ImageStorageService imageStorageService;
     private final ProfileSearchService profileSearchService;
     private final SimpleProfileService simpleProfileService;
+    private final ProfileCreationService profileCreationService;
     private final AuthTokenService authTokenService;
 
     public ProfileController(ProfileRepository profileRepository, 
                            ImageStorageService imageStorageService,
                            ProfileSearchService profileSearchService,
                            SimpleProfileService simpleProfileService,
+                           ProfileCreationService profileCreationService,
                            AuthTokenService authTokenService) {
         this.profileRepository = profileRepository;
         this.imageStorageService = imageStorageService;
         this.profileSearchService = profileSearchService;
         this.simpleProfileService = simpleProfileService;
+        this.profileCreationService = profileCreationService;
         this.authTokenService = authTokenService;
     }
 
     @GetMapping
-    public List<Profile> getAllProfiles() {
-        List<Profile> profiles = profileRepository.findAll();
+    public List<Profile> getProfiles(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "6") int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(6, Math.max(1, size));
+        profileCreationService.ensureProfilesAvailable((safePage + 1) * safeSize);
+        List<Profile> profiles = profileRepository
+                .findAll(PageRequest.of(safePage, safeSize, Sort.by("id")))
+                .getContent();
         profiles.forEach(this::fixImageUrl);
         return profiles;
     }

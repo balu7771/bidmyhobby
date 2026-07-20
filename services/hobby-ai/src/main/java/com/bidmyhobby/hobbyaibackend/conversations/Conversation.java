@@ -13,6 +13,8 @@ public class Conversation {
     private String id;
     
     private String profileId;
+
+    private String userId;
     
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "conversation_id")
@@ -23,14 +25,20 @@ public class Conversation {
     }
     
     public Conversation(String id, String profileId, List<ChatMessage> messages) {
+        this(id, profileId, null, messages);
+    }
+
+    public Conversation(String id, String profileId, String userId, List<ChatMessage> messages) {
         this.id = id;
         this.profileId = profileId;
+        this.userId = userId;
         this.messages = messages != null ? messages : new ArrayList<>();
     }
     
     // Original record-style accessors
     public String id() { return id; }
     public String profileId() { return profileId; }
+    public String userId() { return userId; }
     public List<ChatMessage> messages() { return messages; }
     
     // Standard getters and setters for JPA
@@ -39,6 +47,9 @@ public class Conversation {
     
     public String getProfileId() { return profileId; }
     public void setProfileId(String profileId) { this.profileId = profileId; }
+
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
     
     public List<ChatMessage> getMessages() { return messages; }
     public void setMessages(List<ChatMessage> messages) { this.messages = messages; }
