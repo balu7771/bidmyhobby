@@ -22,15 +22,20 @@ public class SendGridEmailSender implements EmailSender {
     public SendGridEmailSender(ObjectMapper mapper) { this.mapper = mapper; }
 
     public String sendLoginCode(String email, String code) {
+        return sendMessage(email, "Your BidMyHobby login code",
+                "Your BidMyHobby login code is " + code
+                        + ". It expires in 10 minutes. Do not share this code.");
+    }
+
+    public String sendMessage(String email, String subject, String content) {
         if (apiKey == null || apiKey.isBlank() || fromEmail == null || fromEmail.isBlank())
             throw new IllegalStateException("Email delivery is not configured");
         try {
             Map<String, Object> payload = Map.of(
                     "personalizations", List.of(Map.of("to", List.of(Map.of("email", email)))),
                     "from", Map.of("email", fromEmail, "name", "BidMyHobby"),
-                    "subject", "Your BidMyHobby login code",
-                    "content", List.of(Map.of("type", "text/plain", "value",
-                            "Your BidMyHobby login code is " + code + ". It expires in 10 minutes. Do not share this code.")));
+                    "subject", subject,
+                    "content", List.of(Map.of("type", "text/plain", "value", content)));
             HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.sendgrid.com/v3/mail/send"))
                     .timeout(Duration.ofSeconds(15)).header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
@@ -39,7 +44,7 @@ public class SendGridEmailSender implements EmailSender {
             if (response.statusCode() < 200 || response.statusCode() >= 300)
                 throw new IllegalStateException("SendGrid status " + response.statusCode());
             String requestId = response.headers().firstValue("X-Message-Id").orElse("unavailable");
-            log.info("Login email accepted by SendGrid; requestId={}", requestId);
+            log.info("Email accepted by SendGrid; subject={}, requestId={}", subject, requestId);
             return requestId;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); throw new IllegalStateException("Email delivery interrupted", e);

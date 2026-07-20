@@ -2,12 +2,12 @@ package com.bidmyhobby.auction.controller;
 
 import com.bidmyhobby.auction.client.CatalogServiceClient;
 import com.bidmyhobby.auction.client.AiServiceClient;
-import com.bidmyhobby.auction.event.BidEventPublisher;
 import com.bidmyhobby.auction.service.BidStorageService;
 import com.bidmyhobby.auction.exception.ResourceNotFoundException;
 import com.bidmyhobby.auction.auth.AuthenticatedUser;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,15 +27,14 @@ public class AuctionController {
     private BidStorageService bidStorageService;
 
     @Autowired
-    private BidEventPublisher bidEventPublisher;
-
-    @Autowired
     private CatalogServiceClient catalogServiceClient;
 
     @Autowired(required = false)
     private AiServiceClient aiServiceClient;
     @Autowired
     private AuthenticatedUser authenticatedUser;
+    @Value("${auth.token.secret}")
+    private String internalServiceToken;
 
     @GetMapping("/test")
     public ResponseEntity<String> test() {
@@ -83,17 +82,28 @@ public class AuctionController {
             // Save bid to S3
             bidStorageService.saveBid(itemId, bidderEmail, bidAmount.doubleValue());
 
-            // Publish bid event for notifications
-            // TODO: Get actual item owner from catalog service
-            bidEventPublisher.publishBidEvent(itemId, bidderEmail, bidAmount.doubleValue(), 
-                "balu.learnz@gmail.com", "Auction Item");
+            String creatorEmail = itemCreator(item);
+            String itemName = String.valueOf(item.getOrDefault("name", "Hobby item"));
+            String currency = String.valueOf(item.getOrDefault("currency", "INR"));
+            try {
+                if (aiServiceClient != null && creatorEmail != null) {
+                    aiServiceClient.sendBidPlacedEmails(internalServiceToken, Map.of(
+                            "creatorEmail", creatorEmail,
+                            "bidderEmail", bidderEmail,
+                            "itemName", itemName,
+                            "bidAmount", bidAmount.toPlainString(),
+                            "currency", currency));
+                }
+            } catch (Exception emailError) {
+                System.err.println("Bid was saved, but email notification failed: " + emailError.getMessage());
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Bid placed successfully");
             response.put("itemId", itemId);
             response.put("bidAmount", bidAmount);
             response.put("minimumBid", minimumBid);
-            response.put("currency", "INR");
+            response.put("currency", currency);
 
             return ResponseEntity.ok(response);
 
@@ -119,6 +129,13 @@ public class AuctionController {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static String itemCreator(Map<String, Object> item) {
+        Object creator = item.get("email");
+        if (creator == null) creator = item.get("creatorEmail");
+        if (creator == null || creator.toString().isBlank()) return null;
+        return creator.toString();
     }
 
     @GetMapping("/bids/{itemId}")
@@ -183,7 +200,7 @@ public class AuctionController {
             }
 
             Map<String, Object> item = catalogServiceClient.getItem(itemId);
-            String creator = item == null ? null : String.valueOf(item.getOrDefault("email", item.get("creatorEmail")));
+            String creator = item == null ? null : itemCreator(item);
             if (!identity.isAdmin() && !sellerEmail.equalsIgnoreCase(creator)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only the seller can approve a winning bid"));
             }
@@ -204,6 +221,8 @@ public class AuctionController {
             if (winningBid != null) {
                 String winnerEmail = (String) winningBid.get("bidderEmail");
                 Double winningAmount = Double.parseDouble(winningBid.get("bidAmount").toString());
+                String approvedItemName = itemName != null ? itemName : String.valueOf(item.getOrDefault("name", "Hobby item"));
+                String currency = String.valueOf(item.getOrDefault("currency", "INR"));
 
                 // Update item status to SALE_IN_PROGRESS
                 try {
@@ -221,12 +240,25 @@ public class AuctionController {
                         java.util.Map<String, String> notifyReq = new HashMap<>();
                         notifyReq.put("sellerPhone", sellerEmail);
                         notifyReq.put("buyerPhone",  winnerEmail);
-                        notifyReq.put("itemName",    itemName != null ? itemName : "Auction Item");
+                        notifyReq.put("itemName", approvedItemName);
                         aiServiceClient.notifyApproval(notifyReq);
                         System.out.println("✅ WhatsApp approval notifications sent");
                     }
                 } catch (Exception e) {
                     System.out.println("⚠️ Could not send approval WhatsApp: " + e.getMessage());
+                }
+
+                try {
+                    if (aiServiceClient != null) {
+                        aiServiceClient.sendBidApprovedEmails(internalServiceToken, Map.of(
+                                "creatorEmail", sellerEmail,
+                                "bidderEmail", winnerEmail,
+                                "itemName", approvedItemName,
+                                "bidAmount", winningAmount.toString(),
+                                "currency", currency));
+                    }
+                } catch (Exception e) {
+                    System.err.println("Approval completed, but email notification failed: " + e.getMessage());
                 }
 
                 // Build success response (no payment service — removed for OCI free tier)

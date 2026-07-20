@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronRight, ImagePlus, Loader2, Pencil, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, ImagePlus, Loader2, Pencil, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { authFetch } from "@/lib/auth";
 
 type Conversation = {
@@ -138,6 +138,7 @@ export default function UploadPage() {
   const hasDraft = !!chat?.draft?.title;
   const ready = !!chat?.allowedActions.includes("PUBLISH");
   const published = !!chat && ["PUBLISHED", "REVIEW_REQUIRED"].includes(chat.state);
+  const rejected = chat?.state === "REJECTED";
   const statusText: Record<string, string> = {
     starting: "Preparing your listing…", analyzing: "Analyzing photos with AI…",
     sending: "Updating your draft…", saving: "Saving changes…",
@@ -154,6 +155,25 @@ export default function UploadPage() {
           <button onClick={() => router.push("/")} className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold">View marketplace</button>
           <button onClick={newListing} className="rounded-xl border border-white/15 px-5 py-3 font-semibold">List another item</button>
         </div>
+      </div>
+    </main>
+  );
+
+  if (rejected) return (
+    <main className="min-h-[calc(100vh-64px)] px-4 py-12 text-white">
+      <div role="alert" className="mx-auto max-w-2xl rounded-3xl border-2 border-red-500 bg-red-950/80 p-7 text-center shadow-2xl shadow-red-950/60 sm:p-10">
+        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-red-400 bg-red-500/20 text-red-300">
+          <AlertTriangle className="h-10 w-10" />
+        </div>
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-red-300">Item rejected</p>
+        <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">This does not appear to be a hobby item</h1>
+        <p className="mx-auto mt-5 max-w-xl rounded-2xl border border-red-400/30 bg-black/25 p-4 text-base font-semibold leading-relaxed text-red-100">
+          {chat.draft?.moderationReason || "BidMyHobby only accepts hobby-related items. This image cannot be published."}
+        </p>
+        <p className="mt-4 text-sm text-red-200/80">Try again with a clear photo of a collectible, craft, artwork, model, musical item, game, or other hobby-related creation.</p>
+        <button onClick={newListing} className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 font-bold text-white hover:bg-red-500">
+          <RotateCcw className="h-5 w-5" /> Try another hobby item
+        </button>
       </div>
     </main>
   );
