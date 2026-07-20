@@ -20,7 +20,7 @@ public class OpenAiImageService {
     }
 
     /**
-     * Placeholder for image generation - AWS Bedrock doesn't support image generation yet
+     * Placeholder for image generation; this service currently returns curated images.
      * This service is disabled by default
      */
     public boolean generateAndSaveImage(String prompt, String fileName) {

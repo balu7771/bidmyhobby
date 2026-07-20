@@ -1,6 +1,6 @@
 package com.bidmyhobby.hobbyaibackend.conversations;
 
-import com.bidmyhobby.hobbyaibackend.ai.AiClientConfig;
+import com.bidmyhobby.hobbyaibackend.ai.OpenAiChatService;
 import com.bidmyhobby.hobbyaibackend.profiles.Profile;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class ConversationService {
 
     @Autowired
-    private AiClientConfig.BedrockChatService bedrockChatService;
+    private OpenAiChatService openAiChatService;
 
     public Conversation generateProfileResponse(Conversation conversation, Profile profile, Profile user) {
         StringBuilder prompt = new StringBuilder();
@@ -49,7 +49,7 @@ public class ConversationService {
         prompt.append("\nRespond naturally as ").append(profile != null ? profile.firstName() : "AI").append(":");
 
         try {
-            String response = bedrockChatService.chat(prompt.toString());
+            String response = openAiChatService.chat(prompt.toString());
             conversation.messages().add(new ChatMessage(
                     response,
                     profile != null ? profile.id() : "AI",

@@ -67,12 +67,9 @@ public class WhatsAppWebhookController {
         }
 
         boolean success = Boolean.TRUE.equals(result.get("success"));
-        String otp = (String) result.get("otp");
-
         Map<String, Object> response = new HashMap<>();
         response.put("message", "Consent recorded and OTP sent");
         response.put("success", success);
-        response.put("fallbackOtp", otp);
         return ResponseEntity.ok(response);
     }
 
@@ -94,12 +91,9 @@ public class WhatsAppWebhookController {
         }
 
         boolean success = Boolean.TRUE.equals(result.get("success"));
-        String otp = (String) result.get("otp");
-
         Map<String, Object> response = new HashMap<>();
         response.put("message", "OTP processed");
         response.put("success", success);
-        response.put("fallbackOtp", otp);
         return ResponseEntity.ok(response);
     }
 

@@ -1,9 +1,9 @@
 # hobby-ai-service
 
-AI-powered hobby recommendation service for the BidMyHobby platform using AWS Bedrock Nova Micro.
+AI-powered hobby chat and profile service for the BidMyHobby platform using OpenAI.
 
 ## Features
-- AI-powered hobby recommendations using AWS Bedrock Nova Micro model
+- AI-powered hobby conversations using OpenAI
 - User profile management
 - Image processing and storage
 - RESTful API with Swagger documentation
@@ -13,12 +13,11 @@ AI-powered hobby recommendation service for the BidMyHobby platform using AWS Be
 - Port: 8088
 - Eureka registration: hobby-ai-service
 - Database: H2 (file-based)
-- AI Provider: AWS Bedrock Nova Micro
+- AI Provider: OpenAI Responses API
 
 ## Environment Variables
-- `AWS_ACCESS_KEY_ID`: AWS Access Key for Bedrock access
-- `AWS_SECRET_ACCESS_KEY`: AWS Secret Key for Bedrock access
-- `AWS_DEFAULT_REGION`: AWS region (default: us-east-1)
+- `OPENAI_API_KEY`: OpenAI API key
+- `OPENAI_MODEL`: Responses API model (default: `gpt-4o-mini`)
 
 ## API Documentation
 - Swagger UI: http://localhost:8088/swagger-ui.html
@@ -32,14 +31,6 @@ AI-powered hobby recommendation service for the BidMyHobby platform using AWS Be
 # Or run with Docker
 docker build -t hobby-ai-service .
 docker run -p 8088:8088 \
-  -e AWS_ACCESS_KEY_ID=your-access-key \
-  -e AWS_SECRET_ACCESS_KEY=your-secret-key \
-  -e AWS_DEFAULT_REGION=us-east-1 \
+  -e OPENAI_API_KEY=your-openai-key \
   hobby-ai-service
 ```
-
-## AWS Bedrock Benefits
-- Lower cost compared to OpenAI
-- Better latency for regional deployments
-- No API key management complexity
-- Integrated with AWS ecosystem

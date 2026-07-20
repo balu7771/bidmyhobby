@@ -1,14 +1,30 @@
 # BidMyHobby AI
 
 BidMyHobby AI is a hobby marketplace with auction workflows, AI-assisted
-catalog creation, hobby-profile chat, and WhatsApp login.
+catalog creation, hobby-profile chat, and passwordless email login.
 
 ## Active applications
 
 - `apps/web`: Next.js frontend
-- `services/catalog`: catalog, image processing orchestration, and Bedrock moderation
+- `services/catalog`: catalog, image processing orchestration, and OpenAI listing analysis
 - `services/auction`: auction and bidding APIs
-- `services/hobby-ai`: hobby profiles, AI chat/search, and WhatsApp login
+- `services/hobby-ai`: hobby profiles, AI chat/search, email authentication, and optional WhatsApp notifications
+
+## Email login configuration
+
+Passwordless login sends a six-digit code through SendGrid. Verify the
+BidMyHobby sending domain in SendGrid, then configure these values in `.env`:
+
+```bash
+SENDGRID_API_KEY=...
+SENDGRID_FROM_EMAIL=login@bidmyhobby.com
+AUTH_TOKEN_SECRET=at-least-32-random-characters
+ADMIN_EMAILS=admin@example.com
+```
+
+Use the same `AUTH_TOKEN_SECRET` for hobby-ai, catalog, and auction services.
+Production sessions use an HttpOnly, Secure, SameSite=Strict cookie. WhatsApp
+delivery remains disabled unless `WHATSAPP_ENABLED=true` is set deliberately.
 - `services/api-gateway`: NGINX routing for the web and backend services
 - `lambdas/image-processor`: Python Lambda for image watermarking and business-card extraction
 

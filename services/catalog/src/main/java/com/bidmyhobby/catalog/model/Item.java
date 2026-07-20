@@ -22,6 +22,7 @@ public class Item {
     private Double suggestedPrice;
     private String currency = "INR";
     private String status = "ACTIVE";
+    private String listingType = "AUCTION";
     private String category;
     private String imageUrl; // Kept for backward compatibility (primary image)
     private List<String> imageUrls; // Supports up to 4 images
@@ -82,6 +83,14 @@ public class Item {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getListingType() {
+        return listingType;
+    }
+
+    public void setListingType(String listingType) {
+        this.listingType = listingType;
     }
 
     public String getCategory() {

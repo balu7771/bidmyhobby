@@ -1,10 +1,10 @@
 package com.bidmyhobby.hobbyaibackend.profiles;
 
-import com.bidmyhobby.hobbyaibackend.config.BedrockKnowledgeBaseService;
 import com.bidmyhobby.hobbyaibackend.config.ImageStorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.bidmyhobby.hobbyaibackend.auth.AuthTokenService;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -17,17 +17,20 @@ public class ProfileController {
 
     private final ProfileRepository profileRepository;
     private final ImageStorageService imageStorageService;
-    private final BedrockKnowledgeBaseService knowledgeBaseService;
+    private final ProfileSearchService profileSearchService;
     private final SimpleProfileService simpleProfileService;
+    private final AuthTokenService authTokenService;
 
     public ProfileController(ProfileRepository profileRepository, 
                            ImageStorageService imageStorageService,
-                           BedrockKnowledgeBaseService knowledgeBaseService,
-                           SimpleProfileService simpleProfileService) {
+                           ProfileSearchService profileSearchService,
+                           SimpleProfileService simpleProfileService,
+                           AuthTokenService authTokenService) {
         this.profileRepository = profileRepository;
         this.imageStorageService = imageStorageService;
-        this.knowledgeBaseService = knowledgeBaseService;
+        this.profileSearchService = profileSearchService;
         this.simpleProfileService = simpleProfileService;
+        this.authTokenService = authTokenService;
     }
 
     @GetMapping
@@ -67,7 +70,7 @@ public class ProfileController {
     public ResponseEntity<List<Profile>> searchProfiles(
             @RequestParam String query,
             @RequestParam(defaultValue = "5") int maxResults) {
-        List<Profile> profiles = knowledgeBaseService.searchProfiles(query, maxResults);
+        List<Profile> profiles = profileSearchService.searchProfiles(query, maxResults);
         return ResponseEntity.ok(profiles);
     }
     
@@ -103,8 +106,17 @@ public class ProfileController {
     }
     
     @PostMapping("/user")
-    public ResponseEntity<Profile> createOrUpdateUserProfile(@RequestBody Profile userProfile) {
-        // Set or update user profile with email as ID
+    public ResponseEntity<Profile> createOrUpdateUserProfile(@RequestBody Profile userProfile,
+            @CookieValue("bmh_session") String sessionToken) {
+        AuthTokenService.Session session = authTokenService.verify(sessionToken);
+        userProfile.setId(session.email());
+        if (!userProfile.isWhatsappNotificationsEnabled()) {
+            userProfile.setWhatsappConsentAt(null);
+            userProfile.setWhatsappConsentVersion(null);
+        } else if (userProfile.getWhatsappConsentAt() == null) {
+            userProfile.setWhatsappConsentAt(java.time.LocalDateTime.now());
+            userProfile.setWhatsappConsentVersion("2026-07-19");
+        }
         Profile savedProfile = profileRepository.save(userProfile);
         return ResponseEntity.ok(savedProfile);
     }

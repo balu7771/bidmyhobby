@@ -9,6 +9,8 @@ x-business-common: &business-common
     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
     - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-local-development-secret-change-me-123456789}
+    - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8081}
   networks:
     - bidmyhobby-network
 
@@ -44,6 +46,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
       - AWS_LAMBDA_IMAGE_PROCESSOR=${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-local-development-secret-change-me-123456789}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - OPENAI_TIMEOUT_SECONDS=${OPENAI_TIMEOUT_SECONDS:-30}
@@ -75,10 +78,17 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - AWS_BEDROCK_KB_ID=${AWS_BEDROCK_KB_ID:-dummy-kb-id}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-local-development-secret-change-me-123456789}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - APP_SITE_URL=${APP_SITE_URL:-http://localhost:3000}
+      - AUTH_COOKIE_SECURE=false
     ports:
       - "8088:8088"
 

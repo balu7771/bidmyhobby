@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Search, Upload, Menu, X, LogOut, Package, MessageCircle } from "lucide-react";
+import { Home, Search, Upload, Menu, X, LogOut, Package, MessageCircle, Mail } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { clearSession } from "@/lib/auth";
 
 const navItems = [
     { name: "Home", href: "/", icon: Home },
@@ -35,7 +36,18 @@ export function Navigation() {
 
     // Read user from localStorage (also listens for the custom login/logout events)
     useEffect(() => {
-        const read = () => setUserEmail(localStorage.getItem("userEmail"));
+        const read = () => {
+            setUserEmail(localStorage.getItem("userEmail"));
+            if (!localStorage.getItem("userEmail")) return;
+            fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/auth/session`, {
+                credentials: "include"
+            }).then(response => {
+                if (response.status === 401) {
+                    clearSession();
+                    setUserEmail(null);
+                }
+            }).catch(() => {});
+        };
         read();
         window.addEventListener("userLogin", read);
         window.addEventListener("userLogout", read);
@@ -46,7 +58,10 @@ export function Navigation() {
     }, []);
 
     const handleLogout = () => {
-        localStorage.removeItem("userEmail");
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/auth/logout`, {
+            method: "POST", credentials: "include"
+        }).catch(() => {});
+        clearSession();
         window.dispatchEvent(new Event("userLogout"));
         setIsMobileMenuOpen(false);
         router.push("/login");
@@ -55,9 +70,9 @@ export function Navigation() {
     const UserBadge = () =>
         userEmail ? (
             <div className="mt-auto px-3 pb-4 pt-3 border-t border-white/5">
-                {/* WhatsApp identity */}
+                {/* Signed-in identity */}
                 <div className="flex items-center gap-2.5 px-3 py-2 mb-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                    <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
                     <div className="min-w-0">
                         <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Logged in</p>
                         <p className="text-white text-xs font-mono truncate">{maskForNav(userEmail)}</p>
@@ -84,7 +99,7 @@ export function Navigation() {
                     href="/login"
                     className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 transition-all"
                 >
-                    <MessageCircle className="w-4 h-4" /> Login with WhatsApp
+                    <Mail className="w-4 h-4" /> Login with Email
                 </Link>
                 <p className="text-center text-[10px] text-slate-600 mt-2">© {new Date().getFullYear()} BidMyHobby</p>
             </div>
@@ -199,7 +214,7 @@ export function Navigation() {
                         ) : (
                             <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}
                                 className="flex items-center justify-center gap-2 w-full px-6 py-4 rounded-2xl font-semibold bg-emerald-600/20 border border-emerald-500/30 text-emerald-300">
-                                <MessageCircle className="w-5 h-5" /> Login with WhatsApp
+                                <Mail className="w-5 h-5" /> Login with Email
                             </Link>
                         )}
                     </div>

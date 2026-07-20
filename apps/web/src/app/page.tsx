@@ -1,10 +1,11 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, TrendingUp, Gavel, Users, Box, ChevronLeft, ChevronRight, X, Upload, Loader2, Check, Trash2, Phone, Mail, Globe, Instagram } from "lucide-react";
+import { ArrowRight, TrendingUp, Gavel, Users, Box, ChevronLeft, ChevronRight, X, Upload, Loader2, Check, Trash2, Phone, Mail, Globe, Instagram, Eye, Maximize2 } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { authFetch } from "@/lib/auth";
 
 /** Masks phone numbers and emails for public display.
  *  Creators see unmasked identities of their own item's bidders. */
@@ -43,6 +44,17 @@ function formatCurrency(amount: number | null | undefined, currency: string | nu
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = { INR: "₹", GBP: "£", USD: "$" };
+
+function biddingFloor(item: any): number {
+    const prices = [item?.basePrice, item?.suggestedPrice]
+        .map(Number)
+        .filter(price => Number.isFinite(price) && price >= 0);
+    return prices.length ? Math.min(...prices) : 0;
+}
+
+function isDisplayOnly(item: any): boolean {
+    return item?.listingType === "DISPLAY_ONLY";
+}
 
 /** Parses contact fields appended to a business card description by the backend.
  *  Format: "Some description\nPhone: ****1234\nEmail: foo@bar.com\n..." */
@@ -148,6 +160,7 @@ function ItemCard({ item, index, onItemClick, userEmail }: { item: any, index: n
                         {item.category || 'HOBBY'}
                     </span>
                 </div>
+                {isDisplayOnly(item) && <div className="absolute bottom-2 left-2 z-20"><span className="flex items-center gap-1 rounded-md border border-violet-300/20 bg-violet-500/80 px-2 py-1 text-[10px] font-bold uppercase text-white"><Eye className="h-3 w-3" /> Display only</span></div>}
             </div>
             
             <div className="p-5 flex-1 flex flex-col justify-between">
@@ -156,7 +169,9 @@ function ItemCard({ item, index, onItemClick, userEmail }: { item: any, index: n
                     <p className="text-slate-400 text-xs mb-4 line-clamp-2">{item.description}</p>
                 </div>
                 <div className="flex items-center justify-between text-sm font-medium border-t border-white/5 pt-3 mt-auto">
-                    {item.category === 'BUSINESS' ? (
+                    {isDisplayOnly(item) ? (
+                        <span className="flex items-center gap-2 text-violet-300 text-xs font-semibold"><Maximize2 className="h-4 w-4" /> Click to view full screen</span>
+                    ) : item.category === 'BUSINESS' ? (
                         <span className="text-indigo-300 text-xs font-semibold">Contact for details</span>
                     ) : (
                         <>
@@ -168,14 +183,14 @@ function ItemCard({ item, index, onItemClick, userEmail }: { item: any, index: n
                     )}
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                    {item.category !== 'BUSINESS' && (
+                    {item.category !== 'BUSINESS' && !isDisplayOnly(item) && (
                         <span className="text-slate-500 text-[10px]">Seller Asking: {formatCurrency(item.basePrice, item.currency)}</span>
                     )}
                     <span className="text-slate-400 text-[10px] ml-auto">By: {maskIdentity(item.email)}</span>
                 </div>
 
                 {/* Login to Bid CTA — shown on card for unauthenticated users on non-BUSINESS items */}
-                {!userEmail && item.category !== 'BUSINESS' && item.status === 'ACTIVE' && (
+                {!userEmail && item.category !== 'BUSINESS' && item.status === 'ACTIVE' && !isDisplayOnly(item) && (
                     <div className="mt-3 pt-3 border-t border-white/5">
                         <Link
                             href={`/login?returnTo=/`}
@@ -201,6 +216,7 @@ function HomeContent() {
     
     // Modal State
     const [modalImageIndex, setModalImageIndex] = useState(0);
+    const [fullScreenImage, setFullScreenImage] = useState(false);
     const [bids, setBids] = useState<any[]>([]);
     const [newBidAmount, setNewBidAmount] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
@@ -211,8 +227,7 @@ function HomeContent() {
     const [isFetchingItems, setIsFetchingItems] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
-    const ADMIN_SUFFIX = "9353035490";
-    const isAdmin = userEmail ? userEmail.replace(/[^0-9]/g, "").endsWith(ADMIN_SUFFIX) : false;
+    const isAdmin = typeof window !== "undefined" && localStorage.getItem("userRole") === "ADMIN";
     const isItemCreator = !!(userEmail && selectedItem && selectedItem.email === userEmail);
     const canDelete = isItemCreator || isAdmin;
 
@@ -252,7 +267,8 @@ function HomeContent() {
     useEffect(() => {
         if (selectedItem) {
             setModalImageIndex(0);
-            fetchBids(selectedItem.itemId);
+            setBids([]);
+            if (!isDisplayOnly(selectedItem)) fetchBids(selectedItem.itemId);
         }
     }, [selectedItem]);
 
@@ -278,26 +294,21 @@ function HomeContent() {
         if (!userEmail) return;
 
         const bidVal = parseFloat(newBidAmount);
-        const minBid = selectedItem?.basePrice ?? 0;
-        const maxWarn = selectedItem?.suggestedPrice ? selectedItem.suggestedPrice * 10 : Infinity;
+        const minBid = biddingFloor(selectedItem);
         const cur = selectedItem?.currency || "INR";
 
         if (isNaN(bidVal) || bidVal <= 0) {
             setBidError("Please enter a valid bid amount."); return;
         }
         if (bidVal < minBid) {
-            setBidError(`Your bid must be at least ${formatCurrency(minBid, cur)} (the seller's asking price).`); return;
+            setBidError(`Your bid must be at least ${formatCurrency(minBid, cur)}, the lower of the AI estimate and seller asking price.`); return;
         }
-        if (bidVal > maxWarn) {
-            setBidError(`Bid seems unusually high. Maximum accepted is ${formatCurrency(maxWarn, cur)}.`); return;
-        }
-
         setIsLoading(true);
         setBidError(null);
         setBidSuccess(null);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-            const res = await fetch(`${apiUrl}/auction/bids`, {
+            const res = await authFetch(`${apiUrl}/auction/bids`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -340,7 +351,7 @@ function HomeContent() {
         setIsApproving(true);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-            const res = await fetch(`${apiUrl}/auction/bids/complete`, {
+            const res = await authFetch(`${apiUrl}/auction/bids/complete`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -366,7 +377,7 @@ function HomeContent() {
         setIsDeleting(true);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-            const res = await fetch(`${apiUrl}/catalog/items/${itemId}?email=${encodeURIComponent(userEmail)}`, {
+            const res = await authFetch(`${apiUrl}/catalog/items/${itemId}?email=${encodeURIComponent(userEmail)}`, {
                 method: "DELETE",
             });
             if (!res.ok) throw new Error(await res.text());
@@ -408,7 +419,7 @@ function HomeContent() {
         ? realItems.filter(i => i.email === userEmail)
         : realItems;
 
-    const liveAuctionsData = displayedItems.filter(item => item.status === 'ACTIVE' && item.category !== 'BUSINESS');
+    const liveAuctionsData = displayedItems.filter(item => item.status === 'ACTIVE' && item.category !== 'BUSINESS' && !isDisplayOnly(item));
 
     const modalImages = selectedItem?.imageUrls?.length > 0 ? selectedItem.imageUrls : (selectedItem?.imageUrl ? [selectedItem.imageUrl] : []);
 
@@ -738,14 +749,17 @@ function HomeContent() {
                             <div className="w-full md:w-1/2 bg-black/50 flex flex-col relative group">
                                 <div className="flex-1 flex items-center justify-center p-4 min-h-[40vh] relative">
                                     {modalImages.length > 0 ? (
-                                        <img 
+                                        <button className="cursor-zoom-in" onClick={() => setFullScreenImage(true)} aria-label="View image full screen">
+                                        <img
                                             src={getCatalogImageUrl(modalImages[modalImageIndex])} 
                                             alt={selectedItem.name}
                                             className="max-w-full max-h-[60vh] object-contain rounded-xl transition-opacity duration-300"
                                         />
+                                        </button>
                                     ) : (
                                         <div className="text-slate-500">No Image Available</div>
                                     )}
+                                    {modalImages.length > 0 && <button onClick={() => setFullScreenImage(true)} className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-lg bg-black/70 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-600"><Maximize2 className="h-4 w-4" /> Full screen</button>}
 
                                     {modalImages.length > 1 && (
                                         <>
@@ -779,6 +793,7 @@ function HomeContent() {
                                         <span className="px-2 py-1 bg-white/10 text-[10px] uppercase font-bold text-slate-300 rounded-md border border-white/10">
                                             {selectedItem.category || 'HOBBY'}
                                         </span>
+                                        {isDisplayOnly(selectedItem) && <span className="px-2 py-1 text-[10px] uppercase font-bold rounded-md bg-violet-500/20 text-violet-300">Display only · not for sale</span>}
                                     </div>
                                     <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
                                         {selectedItem.name}
@@ -853,8 +868,9 @@ function HomeContent() {
                                     )}
                                     
                                     {/* Price & Specs — hidden for business/visiting cards */}
-                                    {selectedItem.category !== 'BUSINESS' && (
-                                        <div className="grid grid-cols-2 gap-4">
+                                    {selectedItem.category !== 'BUSINESS' && !isDisplayOnly(selectedItem) && (
+                                        <div className="space-y-3">
+                                          <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex flex-col justify-center">
                                                 <span className="text-slate-400 text-xs block mb-1">A.I Estimated Value</span>
                                                 <span className="text-emerald-400 font-mono text-xl font-bold">
@@ -867,6 +883,10 @@ function HomeContent() {
                                                     {formatCurrency(selectedItem.basePrice, selectedItem.currency)}
                                                 </span>
                                             </div>
+                                          </div>
+                                          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                                            Bidding starts at <strong>{formatCurrency(biddingFloor(selectedItem), selectedItem.currency)}</strong>, the lower of these two prices.
+                                          </div>
                                         </div>
                                     )}
 
@@ -888,7 +908,7 @@ function HomeContent() {
                                     </div>
 
                                     {/* --- AUCTION & BIDDING SECTION --- */}
-                                    {selectedItem.category !== 'BUSINESS' && (
+                                    {selectedItem.category !== 'BUSINESS' && !isDisplayOnly(selectedItem) && (
                                         <div className="border-t border-white/10 pt-6 mt-6">
                                             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                                                 <Gavel className="w-5 h-5 text-blue-400" />
@@ -964,10 +984,10 @@ function HomeContent() {
                                                                 type="number" 
                                                                 step="0.01" 
                                                                 required
-                                                                min={selectedItem.basePrice || 0}
+                                                                min={biddingFloor(selectedItem)}
                                                                 value={newBidAmount}
                                                                 onChange={(e) => setNewBidAmount(e.target.value)}
-                                                                placeholder={`Min ${formatCurrency(selectedItem.basePrice, selectedItem.currency)}`}
+                                                                placeholder={`Min ${formatCurrency(biddingFloor(selectedItem), selectedItem.currency)}`}
                                                                 className="w-full pl-10 pr-4 py-3 bg-black/50 border border-white/10 rounded-xl text-white focus:ring-2 focus:ring-blue-500/50 outline-none"
                                                             />
                                                         </div>
@@ -1007,6 +1027,14 @@ function HomeContent() {
                                 )}
                             </div>
                         </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
+                {selectedItem && fullScreenImage && modalImages.length > 0 && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] flex items-center justify-center bg-black p-3" onClick={() => setFullScreenImage(false)}>
+                        <button aria-label="Close full screen image" onClick={() => setFullScreenImage(false)} className="absolute right-4 top-4 z-20 rounded-full bg-white/10 p-3 text-white hover:bg-white/20"><X className="h-6 w-6" /></button>
+                        <img src={getCatalogImageUrl(modalImages[modalImageIndex])} alt={selectedItem.name} className="max-h-full max-w-full object-contain" onClick={event => event.stopPropagation()} />
                     </motion.div>
                 )}
             </AnimatePresence>

@@ -6,7 +6,7 @@ import com.twilio.type.PhoneNumber;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
-import com.bidmyhobby.hobbyaibackend.ai.AiClientConfig.BedrockChatService;
+import com.bidmyhobby.hobbyaibackend.ai.OpenAiChatService;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.Optional;
 import java.util.Random;
@@ -27,13 +27,15 @@ public class WhatsAppAgentService {
 
     @Value("${app.site.url:https://bidmyhobby.com}")
     private String siteUrl;
+    @Value("${whatsapp.enabled:false}")
+    private boolean whatsappEnabled;
 
     private final WhatsAppSessionRepository sessionRepository;
     private final OtpCacheRepository otpCacheRepository;
-    private final BedrockChatService chatClient;
+    private final OpenAiChatService chatClient;
 
     @Autowired
-    public WhatsAppAgentService(WhatsAppSessionRepository sessionRepository, OtpCacheRepository otpCacheRepository, BedrockChatService chatClient) {
+    public WhatsAppAgentService(WhatsAppSessionRepository sessionRepository, OtpCacheRepository otpCacheRepository, OpenAiChatService chatClient) {
         this.sessionRepository = sessionRepository;
         this.otpCacheRepository = otpCacheRepository;
         this.chatClient = chatClient;
@@ -50,6 +52,7 @@ public class WhatsAppAgentService {
     }
 
     public void sendWhatsAppMessage(String to, String messageBody) {
+        if (!whatsappEnabled) return;
         if (accountSid == null || accountSid.isEmpty()) {
             System.out.println("MOCK WA to " + to + ": " + messageBody);
             return;
@@ -68,6 +71,7 @@ public class WhatsAppAgentService {
     }
 
     public java.util.Map<String, Object> generateAndSendOtp(String phoneNumber) {
+        if (!whatsappEnabled) return java.util.Map.of("error", "WHATSAPP_DISABLED", "message", "WhatsApp is not enabled");
         // Check rate limiting: max 3 OTP requests per phone per hour
         long otpCountLastHour = otpCacheRepository.findByPhoneNumberAndCreatedAtAfter(
             phoneNumber,
@@ -139,6 +143,7 @@ public class WhatsAppAgentService {
     }
 
     private boolean sendWhatsAppMessageBoolean(String to, String messageBody) {
+        if (!whatsappEnabled) return false;
         if (accountSid == null || accountSid.isEmpty()) {
             System.out.println("MOCK WA to " + to + ": " + messageBody);
             return false;
@@ -285,7 +290,7 @@ public class WhatsAppAgentService {
                 case "COMPLETED":
                 case "START":
                 default:
-                    // Use Bedrock ChatClient for generic replies
+                    // Use OpenAI for generic replies
                     try {
                         String aiReply = chatClient.chat("You are a helpful WhatsApp assistant for BidMyHobby. The user says: " + body + ". Briefly explain they can send an image of their hobby item to start uploading.");
                         reply = aiReply;

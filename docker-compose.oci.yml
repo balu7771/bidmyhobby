@@ -8,6 +8,8 @@ x-business-common: &business-common
     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
     - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
+    - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8081}
   networks:
     - bidmyhobby-network
 
@@ -49,6 +51,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
       - AWS_LAMBDA_IMAGE_PROCESSOR=${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
     ports:
       - "8081:8081"
     # Speed up JVM startup; -XX:TieredStopAtLevel=1 disables full JIT on boot
@@ -82,11 +85,18 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
-      - AWS_BEDROCK_KB_ID=${AWS_BEDROCK_KB_ID:-dummy-kb-id}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-+14155238886}
       - SITE_URL=${SITE_URL:-https://bidmyhobby.com}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - APP_SITE_URL=${APP_SITE_URL:-https://bidmyhobby.com}
+      - AUTH_COOKIE_SECURE=true
     ports:
       - "8088:8088"
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "/app/app.jar"]

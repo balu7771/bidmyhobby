@@ -21,7 +21,7 @@ public class SmallBusinessService {
     private S3StorageService s3StorageService;
 
     @Autowired
-    private BedrockModerationService bedrockModerationService;
+    private ImageProcessingService imageProcessingService;
 
     public SmallBusiness createBusinessFromCard(MultipartFile businessCardImage,
             String uploaderEmail,
@@ -30,18 +30,18 @@ public class SmallBusinessService {
             String location,
             String description) throws Exception {
 
-        // Use Bedrock to extract business card information with guardrails
-        BedrockModerationService.BusinessCardResult result = bedrockModerationService.extractBusinessCardInfo(
-                businessCardImage.getBytes(),
-                businessCardImage.getContentType(),
-                businessName,
-                description);
-
-        if (!result.isApproved()) {
-            throw new RuntimeException("Business card content not approved: " + result.getReason());
+        Map<String, Object> input = new java.util.HashMap<>();
+        input.put("imageData", java.util.Base64.getEncoder().encodeToString(businessCardImage.getBytes()));
+        input.put("email", uploaderEmail);
+        input.put("isBusinessCard", true);
+        Map<String, Object> extraction = imageProcessingService.processBusinessCard(input);
+        Map<String, String> businessInfo = new java.util.HashMap<>();
+        Object rawInfo = extraction.get("businessInfo");
+        if (rawInfo instanceof Map<?, ?> values) {
+            values.forEach((key, value) -> {
+                if (key != null && value != null) businessInfo.put(key.toString(), value.toString());
+            });
         }
-
-        Map<String, String> businessInfo = result.getBusinessInfo();
 
         // Upload image to S3
         String imageUrl = s3StorageService.uploadImage(businessCardImage.getBytes(), "business-cards");
@@ -83,7 +83,7 @@ public class SmallBusinessService {
             business.setFacebookProfile(facebook);
         }
 
-        // Auto-approve if content was approved by AI
+        // The existing business-card flow publishes extracted submissions immediately.
         business.setIsApproved(true);
 
         return smallBusinessRepository.save(business);
