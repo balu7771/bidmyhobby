@@ -4,11 +4,11 @@ x-business-common: &business-common
     - SPRING_PROFILES_ACTIVE=docker
     - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
     - EUREKA_CLIENT_FETCH_REGISTRY=false
-    - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
-    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
-    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+    - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:?AWS_S3_BUCKET_NAME is required}
+    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
+    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
     - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-    - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
+    - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET is required}
     - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8081}
   networks:
     - bidmyhobby-network
@@ -17,8 +17,8 @@ x-business-common: &business-common
 x-springboot-healthcheck: &springboot-healthcheck
   interval: 15s
   timeout: 5s
-  retries: 5
-  start_period: 180s   # Allow up to 3 min for slow OCI/emulated startups
+  retries: 10
+  start_period: 360s   # The 1 GB OCI host can take 3-5 min while three JVMs start
 
 services:
   api-gateway:
@@ -35,6 +35,8 @@ services:
         condition: service_healthy
       auction-service:
         condition: service_healthy
+      hobby-ai-service:
+        condition: service_healthy
       frontend:
         condition: service_started
     restart: unless-stopped
@@ -46,14 +48,20 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
       - EUREKA_CLIENT_FETCH_REGISTRY=false
-      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:?AWS_S3_BUCKET_NAME is required}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
       - AWS_LAMBDA_IMAGE_PROCESSOR=${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
-      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
-    ports:
-      - "8081:8081"
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET is required}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_TIMEOUT_SECONDS=${OPENAI_TIMEOUT_SECONDS:-30}
+      - OPENAI_MAX_RETRIES=${OPENAI_MAX_RETRIES:-2}
+    expose:
+      - "8081"
+    volumes:
+      - catalog-data:/app/data
     # Speed up JVM startup; -XX:TieredStopAtLevel=1 disables full JIT on boot
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
     healthcheck:
@@ -64,8 +72,8 @@ services:
   auction-service:
     <<: *business-common
     image: bidmyhobby-v2-auction-service:latest
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
     healthcheck:
       <<: *springboot-healthcheck
@@ -79,30 +87,35 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
       - EUREKA_CLIENT_FETCH_REGISTRY=false
-      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-dummy-bucket}
-      - AWS_S3_AI_BUCKET_NAME=bidmyhobby-ai-profiles
-      - AWS_S3_AI_IMAGES_PREFIX=images/
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-access-key}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret-key}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:?AWS_S3_BUCKET_NAME is required}
+      - AWS_S3_AI_BUCKET_NAME=${AWS_S3_AI_BUCKET_NAME:-bidmyhobby-ai-profiles}
+      - AWS_S3_AI_IMAGES_PREFIX=${AWS_S3_AI_IMAGES_PREFIX:-images/}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-+14155238886}
-      - SITE_URL=${SITE_URL:-https://bidmyhobby.com}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
-      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
-      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET}
+      - SITE_URL=${OCI_SITE_URL:-https://bidmyhobby.com}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:?SENDGRID_API_KEY is required}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:?SENDGRID_FROM_EMAIL is required}
+      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET is required}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
-      - APP_SITE_URL=${APP_SITE_URL:-https://bidmyhobby.com}
+      - APP_SITE_URL=${OCI_SITE_URL:-https://bidmyhobby.com}
       - AUTH_COOKIE_SECURE=true
-    ports:
-      - "8088:8088"
+      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-false}
+    expose:
+      - "8088"
+    volumes:
+      - hobby-ai-data:/app/data
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "/app/app.jar"]
     healthcheck:
       <<: *springboot-healthcheck
-      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      # Hobby AI does not include Actuator. This lightweight endpoint verifies
+      # that its HTTP server, database, and initial profile loading are ready.
+      test: ["CMD", "curl", "-f", "http://localhost:8088/api/profiles?page=0&size=1"]
     restart: unless-stopped
 
   frontend:
@@ -110,8 +123,8 @@ services:
     pull_policy: never
     environment:
       - NEXT_PUBLIC_API_URL=/api
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - catalog-service
     networks:
@@ -121,3 +134,7 @@ services:
 networks:
   bidmyhobby-network:
     driver: bridge
+
+volumes:
+  catalog-data:
+  hobby-ai-data:

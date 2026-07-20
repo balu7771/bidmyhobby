@@ -91,6 +91,8 @@ services:
       - AUTH_COOKIE_SECURE=false
     ports:
       - "8088:8088"
+    volumes:
+      - hobby-ai-data:/app/data
 
   # Next.js Frontend
   frontend:
@@ -110,3 +112,4 @@ networks:
 
 volumes:
   catalog-data:
+  hobby-ai-data:
