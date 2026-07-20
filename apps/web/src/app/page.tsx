@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth";
 
 /** Masks phone numbers and emails for public display.
- *  Creators see unmasked identities of their own item's bidders. */
+ *  Counterparty identities remain private until a bid is approved. */
 function maskIdentity(identity: string | null | undefined): string {
     if (!identity) return "Anonymous";
     if (/^\+?[0-9\s\-]{7,}$/.test(identity.trim())) {
@@ -408,7 +408,7 @@ function HomeContent() {
         }
     };
 
-    const handleApproveWinner = async (itemId: string, sellerEmail: string) => {
+    const handleApproveWinner = async (itemId: string, bidId: string) => {
         setIsApproving(true);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -418,7 +418,7 @@ function HomeContent() {
                 body: JSON.stringify({
                     itemId,
                     itemName: selectedItem?.name,
-                    sellerEmail
+                    bidId
                 })
             });
             if (!res.ok) throw new Error("Failed to approve winner");
@@ -1006,7 +1006,7 @@ function HomeContent() {
                                                         <div key={bid.bidId || i} className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
                                                             <div>
                                                                 <span className="text-sm font-medium text-slate-200 block">
-                                                                    {isItemCreator ? bid.bidderEmail : maskIdentity(bid.bidderEmail)}
+                                                                    {maskIdentity(bid.bidderEmail)}
                                                                 </span>
                                                                 <span className="text-xs text-slate-500">{new Date(bid.timestamp).toLocaleString()}</span>
                                                             </div>
@@ -1016,24 +1016,14 @@ function HomeContent() {
                                                                 </span>
                                                                 {/* Show Approve button if logged in user is the creator and item is ACTIVE */}
                                                                 {canDelete && selectedItem.status === 'ACTIVE' && (
-                                                                    <>
-                                                                        <button 
-                                                                            onClick={() => handleDeleteItem(selectedItem.itemId)}
-                                                                            disabled={isDeleting}
-                                                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-xs font-bold text-white rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
-                                                                        >
-                                                                            {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                                                            Delete
-                                                                        </button>
-                                                                        <button 
-                                                                            onClick={() => handleApproveWinner(selectedItem.itemId, selectedItem.email)}
+                                                                    <button
+                                                                            onClick={() => handleApproveWinner(selectedItem.itemId, bid.bidId)}
                                                                             disabled={isApproving}
                                                                             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
                                                                         >
                                                                             {isApproving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                                                                             Approve
-                                                                        </button>
-                                                                    </>
+                                                                    </button>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -1050,7 +1040,7 @@ function HomeContent() {
                                             ) : isItemCreator ? (
                                                 <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl text-center">
                                                     <p className="text-blue-400 font-medium text-sm">You are the creator of this item.</p>
-                                                    <p className="text-xs text-slate-400 mt-1">Review the bids above and approve a winner. They will be notified via WhatsApp.</p>
+                                                    <p className="text-xs text-slate-400 mt-1">Review the bids above and approve one bidder. Both of you will receive a mutual introduction email.</p>
                                                 </div>
                                             ) : userEmail ? (
                                                 <form onSubmit={handlePlaceBid} className="space-y-4">

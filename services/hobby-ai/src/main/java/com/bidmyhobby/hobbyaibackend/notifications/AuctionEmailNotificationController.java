@@ -16,7 +16,7 @@ import java.util.Map;
 @RequestMapping("/api/internal/auction-emails")
 public class AuctionEmailNotificationController {
     private final AuctionEmailNotificationService notifications;
-    @Value("${auth.token.secret}")
+    @Value("${auth.token.secret:local-development-secret-change-me-123456789}")
     private String internalServiceToken;
 
     public AuctionEmailNotificationController(AuctionEmailNotificationService notifications) {

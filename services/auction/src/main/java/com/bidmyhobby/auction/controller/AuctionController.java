@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import java.math.BigDecimal;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +33,7 @@ public class AuctionController {
     private AiServiceClient aiServiceClient;
     @Autowired
     private AuthenticatedUser authenticatedUser;
-    @Value("${auth.token.secret}")
+    @Value("${auth.token.secret:local-development-secret-change-me-123456789}")
     private String internalServiceToken;
 
     @GetMapping("/test")
@@ -143,7 +143,7 @@ public class AuctionController {
         try {
             System.out.println("🔍 Getting bids for item: " + itemId);
             List<Map<String, Object>> bids = bidStorageService.getBidsForItem(itemId);
-            return ResponseEntity.ok(bids);
+            return ResponseEntity.ok(publicBids(bids));
         } catch (Exception e) {
             System.err.println("❌ Error getting bids: " + e.getMessage());
             return ResponseEntity.badRequest().body(null);
@@ -156,7 +156,7 @@ public class AuctionController {
             String itemId = request.get("itemId");
             System.out.println("🔍 Getting bids for item (POST): " + itemId);
             List<Map<String, Object>> bids = bidStorageService.getBidsForItem(itemId);
-            return ResponseEntity.ok(bids);
+            return ResponseEntity.ok(publicBids(bids));
         } catch (Exception e) {
             System.err.println("❌ Error getting bids: " + e.getMessage());
             return ResponseEntity.badRequest().body(null);
@@ -186,6 +186,7 @@ public class AuctionController {
     public ResponseEntity<?> completeBidding(@RequestBody Map<String, String> request,
             @CookieValue("bmh_session") String token) {
         String itemId = request.get("itemId");
+        String selectedBidId = request.get("bidId");
         try {
             String itemName = request.get("itemName");
             AuthenticatedUser.Identity identity = authenticatedUser.require(token);
@@ -197,6 +198,11 @@ public class AuctionController {
                 error.put("error", "INVALID_ITEM_ID");
                 error.put("message", "Item ID is required");
                 return ResponseEntity.badRequest().body(error);
+            }
+            if (selectedBidId == null || selectedBidId.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_BID_ID",
+                        "message", "Select a bid to approve"));
             }
 
             Map<String, Object> item = catalogServiceClient.getItem(itemId);
@@ -213,9 +219,9 @@ public class AuctionController {
                 return ResponseEntity.status(404).body(error);
             }
 
-            // Find highest bid
             Map<String, Object> winningBid = bids.stream()
-                .max(Comparator.comparing(bid -> Double.parseDouble(bid.get("bidAmount").toString())))
+                .filter(bid -> selectedBidId.equals(String.valueOf(bid.get("bidId"))))
+                .findFirst()
                 .orElse(null);
 
             if (winningBid != null) {
@@ -236,9 +242,9 @@ public class AuctionController {
 
                 // Send WhatsApp approval notifications to both buyer and seller
                 try {
-                    if (aiServiceClient != null && sellerEmail != null) {
+                    if (aiServiceClient != null && creator != null) {
                         java.util.Map<String, String> notifyReq = new HashMap<>();
-                        notifyReq.put("sellerPhone", sellerEmail);
+                        notifyReq.put("sellerPhone", creator);
                         notifyReq.put("buyerPhone",  winnerEmail);
                         notifyReq.put("itemName", approvedItemName);
                         aiServiceClient.notifyApproval(notifyReq);
@@ -251,7 +257,7 @@ public class AuctionController {
                 try {
                     if (aiServiceClient != null) {
                         aiServiceClient.sendBidApprovedEmails(internalServiceToken, Map.of(
-                                "creatorEmail", sellerEmail,
+                                "creatorEmail", creator,
                                 "bidderEmail", winnerEmail,
                                 "itemName", approvedItemName,
                                 "bidAmount", winningAmount.toString(),
@@ -271,9 +277,9 @@ public class AuctionController {
             }
 
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "NO_VALID_BIDS");
-            error.put("message", "No valid bids found for item");
-            return ResponseEntity.status(400).body(error);
+            error.put("error", "BID_NOT_FOUND");
+            error.put("message", "The selected bid was not found for this item");
+            return ResponseEntity.status(404).body(error);
         } catch (ResourceNotFoundException e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "ITEM_NOT_FOUND");
@@ -295,5 +301,28 @@ public class AuctionController {
             e.printStackTrace();
             return ResponseEntity.status(500).body(error);
         }
+    }
+
+    private static List<Map<String, Object>> publicBids(List<Map<String, Object>> bids) {
+        return bids.stream().map(bid -> {
+            Map<String, Object> sanitized = new LinkedHashMap<>(bid);
+            sanitized.put("bidderEmail", maskIdentity(String.valueOf(bid.get("bidderEmail"))));
+            return sanitized;
+        }).toList();
+    }
+
+    static String maskIdentity(String identity) {
+        if (identity == null || identity.isBlank() || "null".equals(identity)) return "Anonymous";
+        int at = identity.indexOf('@');
+        if (at > 0) {
+            String username = identity.substring(0, at);
+            String visible = username.substring(0, Math.min(2, username.length()));
+            return visible + "*****" + identity.substring(at);
+        }
+        String digits = identity.replaceAll("\\D", "");
+        if (digits.length() >= 7) {
+            return "*****" + digits.substring(digits.length() - 4);
+        }
+        return "Anonymous";
     }
 }
