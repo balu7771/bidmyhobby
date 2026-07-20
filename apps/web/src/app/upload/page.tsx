@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronRight, ImagePlus, Loader2, Pencil, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, ImagePlus, Loader2, Pencil, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { authFetch } from "@/lib/auth";
 
 type Conversation = {
@@ -18,6 +18,8 @@ type Conversation = {
 type Action = "starting" | "analyzing" | "sending" | "saving" | "publishing" | "deleting" | null;
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const MAX_IMAGE_BYTES = 13 * 1024 * 1024;
+const MAX_IMAGES = 4;
 
 export default function UploadPage() {
   const router = useRouter();
@@ -89,8 +91,26 @@ export default function UploadPage() {
 
   async function addImages(files: FileList | null) {
     if (!chat || !files?.length || busy) return;
+    const selectedFiles = Array.from(files);
+    if (chat.images.length + selectedFiles.length > MAX_IMAGES) {
+      setError(`You can upload up to ${MAX_IMAGES} photos per listing.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    const oversized = selectedFiles.find(file => file.size > MAX_IMAGE_BYTES);
+    if (oversized) {
+      setError(`“${oversized.name}” is larger than 13 MB. Choose a smaller photo and try again.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    const unsupported = selectedFiles.find(file => !file.type.startsWith("image/"));
+    if (unsupported) {
+      setError(`“${unsupported.name}” is not a supported image file.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     const form = new FormData();
-    Array.from(files).forEach(file => form.append("files", file));
+    selectedFiles.forEach(file => form.append("files", file));
     setAction("analyzing"); setError("");
     try {
       setChat(await call(`${API}/catalog/listing-conversations/${chat.conversationId}/images?ownerId=${encodeURIComponent(owner)}`, { method: "POST", body: form }));
@@ -138,6 +158,7 @@ export default function UploadPage() {
   const hasDraft = !!chat?.draft?.title;
   const ready = !!chat?.allowedActions.includes("PUBLISH");
   const published = !!chat && ["PUBLISHED", "REVIEW_REQUIRED"].includes(chat.state);
+  const rejected = chat?.state === "REJECTED";
   const statusText: Record<string, string> = {
     starting: "Preparing your listing…", analyzing: "Analyzing photos with AI…",
     sending: "Updating your draft…", saving: "Saving changes…",
@@ -154,6 +175,25 @@ export default function UploadPage() {
           <button onClick={() => router.push("/")} className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold">View marketplace</button>
           <button onClick={newListing} className="rounded-xl border border-white/15 px-5 py-3 font-semibold">List another item</button>
         </div>
+      </div>
+    </main>
+  );
+
+  if (rejected) return (
+    <main className="min-h-[calc(100vh-64px)] px-4 py-12 text-white">
+      <div role="alert" className="mx-auto max-w-2xl rounded-3xl border-2 border-red-500 bg-red-950/80 p-7 text-center shadow-2xl shadow-red-950/60 sm:p-10">
+        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 border-red-400 bg-red-500/20 text-red-300">
+          <AlertTriangle className="h-10 w-10" />
+        </div>
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-red-300">Item rejected</p>
+        <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">This does not appear to be a hobby item</h1>
+        <p className="mx-auto mt-5 max-w-xl rounded-2xl border border-red-400/30 bg-black/25 p-4 text-base font-semibold leading-relaxed text-red-100">
+          {chat.draft?.moderationReason || "BidMyHobby only accepts hobby-related items. This image cannot be published."}
+        </p>
+        <p className="mt-4 text-sm text-red-200/80">Try again with a clear photo of a collectible, craft, artwork, model, musical item, game, or other hobby-related creation.</p>
+        <button onClick={newListing} className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 font-bold text-white hover:bg-red-500">
+          <RotateCcw className="h-5 w-5" /> Try another hobby item
+        </button>
       </div>
     </main>
   );
@@ -187,9 +227,10 @@ export default function UploadPage() {
           <footer className="border-t border-white/10 p-4">
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {chat?.images.map(image => <div key={image.imageId} className="flex min-w-0 items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs"><span className="min-w-0 flex-1 truncate">{image.filename}</span><button aria-label={`Remove ${image.filename}`} disabled={busy} onClick={() => removeImage(image.imageId)}><Trash2 className="h-4 w-4 text-red-300" /></button></div>)}
-              {(chat?.images.length || 0) < 4 && <button disabled={busy || !chat} onClick={() => fileRef.current?.click()} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 px-3 py-2 text-xs disabled:opacity-40"><ImagePlus className="h-4 w-4" /> Add photos</button>}
+              {(chat?.images.length || 0) < MAX_IMAGES && <button disabled={busy || !chat} onClick={() => fileRef.current?.click()} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 px-3 py-2 text-xs disabled:opacity-40"><ImagePlus className="h-4 w-4" /> Add photos</button>}
               <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={event => addImages(event.target.files)} />
             </div>
+            <p className="mb-3 text-xs text-slate-500">Up to 4 photos, maximum 13 MB each. This limit also applies on mobile.</p>
             <form onSubmit={send} className="flex gap-2">
               <input value={text} onChange={event => setText(event.target.value)} disabled={busy || !chat} placeholder={hasPhotos ? "Add condition, history, city or price…" : "Add photos first, then describe your item…"} className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-blue-400 disabled:opacity-50" />
               <button aria-label="Send" disabled={busy || !text.trim() || !chat} className="rounded-xl bg-blue-600 px-4 disabled:opacity-40"><Send className="h-5 w-5" /></button>

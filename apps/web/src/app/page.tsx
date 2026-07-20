@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth";
 
 /** Masks phone numbers and emails for public display.
- *  Creators see unmasked identities of their own item's bidders. */
+ *  Counterparty identities remain private until a bid is approved. */
 function maskIdentity(identity: string | null | undefined): string {
     if (!identity) return "Anonymous";
     if (/^\+?[0-9\s\-]{7,}$/.test(identity.trim())) {
@@ -218,6 +218,7 @@ function HomeContent() {
     const [modalImageIndex, setModalImageIndex] = useState(0);
     const [fullScreenImage, setFullScreenImage] = useState(false);
     const [bids, setBids] = useState<any[]>([]);
+    const [auctionBidSummaries, setAuctionBidSummaries] = useState<Record<string, { count: number; highestBid: number | null }>>({});
     const [newBidAmount, setNewBidAmount] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
     const [bidError, setBidError] = useState<string | null>(null);
@@ -265,6 +266,56 @@ function HomeContent() {
     }, []);
 
     useEffect(() => {
+        const requestedItemId = searchParams.get("bidItem");
+        if (!requestedItemId || selectedItem || realItems.length === 0) return;
+        const requestedItem = realItems.find(item =>
+            item.itemId === requestedItemId && item.status === "ACTIVE" && !isDisplayOnly(item)
+        );
+        if (requestedItem) {
+            setSelectedItem(requestedItem);
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete("bidItem");
+            window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+        }
+    }, [realItems, searchParams, selectedItem]);
+
+    useEffect(() => {
+        const activeAuctions = realItems.filter(item =>
+            item.status === "ACTIVE" && item.category !== "BUSINESS" && !isDisplayOnly(item)
+        );
+        if (activeAuctions.length === 0) {
+            setAuctionBidSummaries({});
+            return;
+        }
+
+        let cancelled = false;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+        Promise.all(activeAuctions.map(async item => {
+            try {
+                const response = await fetch(`${apiUrl}/auction/bids/get`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ itemId: item.itemId })
+                });
+                if (!response.ok) return [item.itemId, { count: 0, highestBid: null }] as const;
+                const itemBids = await response.json();
+                const amounts = itemBids
+                    .map((bid: any) => Number(bid.bidAmount))
+                    .filter((amount: number) => Number.isFinite(amount));
+                return [item.itemId, {
+                    count: itemBids.length,
+                    highestBid: amounts.length ? Math.max(...amounts) : null
+                }] as const;
+            } catch {
+                return [item.itemId, { count: 0, highestBid: null }] as const;
+            }
+        })).then(entries => {
+            if (!cancelled) setAuctionBidSummaries(Object.fromEntries(entries));
+        });
+        return () => { cancelled = true; };
+    }, [realItems]);
+
+    useEffect(() => {
         if (selectedItem) {
             setModalImageIndex(0);
             setBids([]);
@@ -286,6 +337,20 @@ function HomeContent() {
             }
         } catch (err) {
             console.error("Failed to fetch bids:", err);
+        }
+    };
+
+    const bidRequestError = async (response: Response) => {
+        const fallback = response.status >= 500
+            ? "Bidding is temporarily unavailable. Your bid was not placed. Please try again in a moment."
+            : "We couldn’t place your bid. Please check the amount and try again.";
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) return fallback;
+        try {
+            const body = await response.json();
+            return typeof body?.error === "string" && body.error.trim() ? body.error : fallback;
+        } catch {
+            return fallback;
         }
     };
 
@@ -319,11 +384,20 @@ function HomeContent() {
                 })
             });
             if (!res.ok) {
-                const errText = await res.text();
-                throw new Error(errText || "Failed to place bid");
+                throw new Error(await bidRequestError(res));
             }
             setBidSuccess(`Bid of ${formatCurrency(bidVal, cur)} placed successfully!`);
             setNewBidAmount("");
+            setAuctionBidSummaries(previous => {
+                const current = previous[selectedItem.itemId] || { count: 0, highestBid: null };
+                return {
+                    ...previous,
+                    [selectedItem.itemId]: {
+                        count: current.count + 1,
+                        highestBid: Math.max(current.highestBid ?? bidVal, bidVal)
+                    }
+                };
+            });
             fetchBids(selectedItem.itemId);
 
             // Notify seller via WhatsApp if their identity is a phone number
@@ -347,7 +421,7 @@ function HomeContent() {
         }
     };
 
-    const handleApproveWinner = async (itemId: string, sellerEmail: string) => {
+    const handleApproveWinner = async (itemId: string, bidId: string) => {
         setIsApproving(true);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -357,7 +431,7 @@ function HomeContent() {
                 body: JSON.stringify({
                     itemId,
                     itemName: selectedItem?.name,
-                    sellerEmail
+                    bidId
                 })
             });
             if (!res.ok) throw new Error("Failed to approve winner");
@@ -470,7 +544,7 @@ function HomeContent() {
                             className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 group"
                         >
                             <Upload className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                            Upload your hobby or business idea (visiting card)
+                            Upload your hobby
                         </Link>
                         <button 
                             onClick={() => {
@@ -601,46 +675,68 @@ function HomeContent() {
                     </div>
 
                     <div className="flex overflow-x-auto hide-scrollbar snap-x snap-mandatory pb-6 -mx-4 px-4 md:grid md:grid-cols-3 gap-6">
-                        {liveAuctionsData.map((auction, index) => (
+                        {liveAuctionsData.map((auction, index) => {
+                            const summary = auctionBidSummaries[auction.itemId] || { count: 0, highestBid: null };
+                            const returnTo = `/?bidItem=${encodeURIComponent(auction.itemId)}`;
+                            return (
                             <motion.div
                                 key={auction.itemId}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
                                 onClick={() => setSelectedItem(auction)}
-                                className="snap-center shrink-0 w-[85vw] md:w-auto glass-panel p-4 flex gap-5 group hover:bg-white/10 transition-colors cursor-pointer"
+                                className="snap-center shrink-0 w-[85vw] md:w-auto glass-panel p-4 group hover:bg-white/10 transition-colors cursor-pointer"
                             >
-                                <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-black/40">
-                                    {(auction.imageUrls?.[0] || auction.imageUrl) && (
-                                        <img
-                                            src={getCatalogImageUrl(auction.imageUrls?.[0] || auction.imageUrl)}
-                                            alt={auction.name}
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                                        />
-                                    )}
-                                </div>
-                                <div className="flex flex-col justify-between flex-1">
-                                    <div>
-                                        <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">
-                                            {auction.category || 'HOBBY'}
-                                        </span>
-                                        <h4 className="font-semibold text-white mt-1 line-clamp-2">{auction.name}</h4>
+                                <div className="flex gap-4">
+                                    <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-black/40">
+                                        {(auction.imageUrls?.[0] || auction.imageUrl) && (
+                                            <img
+                                                src={getCatalogImageUrl(auction.imageUrls?.[0] || auction.imageUrl)}
+                                                alt={auction.name}
+                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                            />
+                                        )}
                                     </div>
-                                    <div className="flex items-end justify-between mt-2 flex-wrap gap-2">
+                                    <div className="flex min-w-0 flex-1 flex-col justify-between">
                                         <div>
-                                            <span className="text-xs text-slate-400 block mb-0.5">Starting From</span>
-                                            <span className="font-mono text-emerald-400 font-medium">{formatCurrency(auction.basePrice, auction.currency)}</span>
+                                            <span className="text-[10px] uppercase font-bold text-blue-500 tracking-wider">
+                                                {auction.category || 'HOBBY'}
+                                            </span>
+                                            <h4 className="font-semibold text-white mt-1 line-clamp-2">{auction.name}</h4>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="text-xs text-emerald-400 font-medium flex items-center justify-end gap-1">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                Active
+                                        <div className="mt-2">
+                                            <span className="text-xs text-slate-400 block mb-0.5">
+                                                {summary.highestBid != null ? "Current highest bid" : "Bidding starts at"}
+                                            </span>
+                                            <span className="font-mono text-emerald-400 font-semibold">
+                                                {formatCurrency(summary.highestBid ?? biddingFloor(auction), auction.currency)}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
+                                <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                                    <span className="text-xs text-slate-400">
+                                        {summary.count === 0 ? "No bids yet" : `${summary.count} bid${summary.count === 1 ? "" : "s"}`}
+                                    </span>
+                                    {userEmail ? (
+                                        <button
+                                            onClick={event => { event.stopPropagation(); setSelectedItem(auction); }}
+                                            className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 sm:flex-none"
+                                        >
+                                            <Gavel className="h-4 w-4" /> Place Bid
+                                        </button>
+                                    ) : (
+                                        <Link
+                                            href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+                                            onClick={event => event.stopPropagation()}
+                                            className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 sm:flex-none"
+                                        >
+                                            <Gavel className="h-4 w-4" /> Place Bid
+                                        </Link>
+                                    )}
+                                </div>
                             </motion.div>
-                        ))}
+                        )})}
                     </div>
                 </section>
             )}
@@ -923,7 +1019,7 @@ function HomeContent() {
                                                         <div key={bid.bidId || i} className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
                                                             <div>
                                                                 <span className="text-sm font-medium text-slate-200 block">
-                                                                    {isItemCreator ? bid.bidderEmail : maskIdentity(bid.bidderEmail)}
+                                                                    {maskIdentity(bid.bidderEmail)}
                                                                 </span>
                                                                 <span className="text-xs text-slate-500">{new Date(bid.timestamp).toLocaleString()}</span>
                                                             </div>
@@ -933,24 +1029,14 @@ function HomeContent() {
                                                                 </span>
                                                                 {/* Show Approve button if logged in user is the creator and item is ACTIVE */}
                                                                 {canDelete && selectedItem.status === 'ACTIVE' && (
-                                                                    <>
-                                                                        <button 
-                                                                            onClick={() => handleDeleteItem(selectedItem.itemId)}
-                                                                            disabled={isDeleting}
-                                                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-xs font-bold text-white rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
-                                                                        >
-                                                                            {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                                                            Delete
-                                                                        </button>
-                                                                        <button 
-                                                                            onClick={() => handleApproveWinner(selectedItem.itemId, selectedItem.email)}
+                                                                    <button
+                                                                            onClick={() => handleApproveWinner(selectedItem.itemId, bid.bidId)}
                                                                             disabled={isApproving}
                                                                             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
                                                                         >
                                                                             {isApproving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                                                                             Approve
-                                                                        </button>
-                                                                    </>
+                                                                    </button>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -967,7 +1053,7 @@ function HomeContent() {
                                             ) : isItemCreator ? (
                                                 <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-xl text-center">
                                                     <p className="text-blue-400 font-medium text-sm">You are the creator of this item.</p>
-                                                    <p className="text-xs text-slate-400 mt-1">Review the bids above and approve a winner. They will be notified via WhatsApp.</p>
+                                                    <p className="text-xs text-slate-400 mt-1">Review the bids above and approve one bidder. Both of you will receive a mutual introduction email.</p>
                                                 </div>
                                             ) : userEmail ? (
                                                 <form onSubmit={handlePlaceBid} className="space-y-4">
@@ -1003,7 +1089,7 @@ function HomeContent() {
                                             ) : (
                                                 <div className="bg-white/5 border border-white/10 p-4 rounded-xl text-center">
                                                     <p className="text-slate-400 text-sm mb-3">You must be logged in to place a bid.</p>
-                                                    <Link href="/login" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg inline-block transition-colors">
+                                                    <Link href={`/login?returnTo=${encodeURIComponent(`/?bidItem=${selectedItem.itemId}`)}`} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg inline-block transition-colors">
                                                         Log In to Bid
                                                     </Link>
                                                 </div>

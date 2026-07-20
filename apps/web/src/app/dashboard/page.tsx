@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Sparkles, Loader2, MessageCircle } from "lucide-react";
+import { Sparkles, Loader2, MessageCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AIChatModal } from "@/components/AIChatModal";
 
@@ -128,21 +128,20 @@ function ProfileCard({ profile, index, onChat }: { profile: any; index: number; 
 
 export default function Dashboard() {
     const [profiles, setProfiles] = useState<any[]>([]);
-    const [filtered, setFiltered] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [selectedProfile, setSelectedProfile] = useState<any | null>(null);
-    const [visibleCount, setVisibleCount] = useState(6);
-    const [search, setSearch] = useState("");
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
 
     useEffect(() => {
         const fetchProfiles = async () => {
             try {
-                const res = await fetch(`${API_URL}/ai/profiles`);
+                const res = await fetch(`${API_URL}/ai/profiles?page=0&size=6`);
                 if (res.ok) {
                     const data = await res.json();
-                    const shuffled = [...data].sort(() => 0.5 - Math.random());
-                    setProfiles(shuffled);
-                    setFiltered(shuffled);
+                    setProfiles(data);
+                    setHasMore(data.length === 6);
                 }
             } catch (err) {
                 console.error("Failed to fetch profiles:", err);
@@ -153,14 +152,23 @@ export default function Dashboard() {
         fetchProfiles();
     }, []);
 
-    useEffect(() => {
-        if (!search.trim()) { setFiltered(profiles); return; }
-        const q = search.toLowerCase();
-        setFiltered(profiles.filter(p =>
-            [p.firstName, p.lastName, p.ethnicity, p.gender, p.mainHobby, p.bio]
-                .filter(Boolean).some((v: string) => v.toLowerCase().includes(q))
-        ));
-    }, [search, profiles]);
+    const loadMore = async () => {
+        if (isLoadingMore || !hasMore) return;
+        const nextPage = page + 1;
+        setIsLoadingMore(true);
+        try {
+            const res = await fetch(`${API_URL}/ai/profiles?page=${nextPage}&size=6`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setProfiles(current => [...current, ...data]);
+            setPage(nextPage);
+            setHasMore(data.length === 6);
+        } catch (err) {
+            console.error("Failed to fetch more profiles:", err);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
 
     return (
         <div className="flex flex-col min-h-full pb-20 md:pb-8">
@@ -176,29 +184,10 @@ export default function Dashboard() {
                     </p>
                 </div>
 
-                {/* Search Bar */}
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4 }}
-                    className="relative max-w-3xl mx-auto mb-12"
-                >
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <Search className="h-5 h-5 text-slate-400" />
-                    </div>
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="block w-full pl-12 pr-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all shadow-xl backdrop-blur-md"
-                        placeholder="Search by name, hobby, ethnicity…"
-                    />
-                </motion.div>
-
                 {/* Stats bar */}
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-semibold text-white">
-                        {search ? `${filtered.length} results` : `${profiles.length} Hobbyists`}
+                        Featured hobbyists
                     </h3>
                     <span className="text-xs text-slate-500 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
                         Powered by <span className="text-indigo-400 font-bold">OpenAI</span>
@@ -209,15 +198,15 @@ export default function Dashboard() {
                     <div className="flex justify-center py-20">
                         <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                     </div>
-                ) : filtered.length === 0 ? (
+                ) : profiles.length === 0 ? (
                     <div className="text-center py-20 text-slate-500">
                         <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                        <p>No profiles match your search.</p>
+                        <p>No profiles are available right now.</p>
                     </div>
                 ) : (
                     <div className="space-y-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filtered.slice(0, visibleCount).map((profile, index) => (
+                            {profiles.map((profile, index) => (
                                 <ProfileCard
                                     key={profile.id || index}
                                     profile={profile}
@@ -227,13 +216,14 @@ export default function Dashboard() {
                             ))}
                         </div>
 
-                        {visibleCount < filtered.length && (
+                        {hasMore && (
                             <div className="flex justify-center pt-6">
                                 <button
-                                    onClick={() => setVisibleCount(prev => prev + 6)}
+                                    onClick={loadMore}
+                                    disabled={isLoadingMore}
                                     className="px-8 py-3 bg-white/5 hover:bg-indigo-600/20 border border-white/10 hover:border-indigo-500/30 rounded-full text-white font-medium transition-all hover:scale-105 active:scale-95"
                                 >
-                                    Load more hobbyists
+                                    {isLoadingMore ? "Loading…" : "Load 6 more hobbyists"}
                                 </button>
                             </div>
                         )}

@@ -60,7 +60,7 @@ export function UserHeader() {
                     </button>
                 ) : (
                     <Link 
-                        href="/login"
+                        href="/login?returnTo=/"
                         className="ml-2 text-xs font-semibold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded-md transition-colors"
                     >
                         Log in

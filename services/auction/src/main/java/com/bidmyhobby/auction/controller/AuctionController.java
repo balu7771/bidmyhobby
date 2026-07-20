@@ -2,20 +2,20 @@ package com.bidmyhobby.auction.controller;
 
 import com.bidmyhobby.auction.client.CatalogServiceClient;
 import com.bidmyhobby.auction.client.AiServiceClient;
-import com.bidmyhobby.auction.event.BidEventPublisher;
 import com.bidmyhobby.auction.service.BidStorageService;
 import com.bidmyhobby.auction.exception.ResourceNotFoundException;
 import com.bidmyhobby.auction.auth.AuthenticatedUser;
 import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import java.math.BigDecimal;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,15 +27,14 @@ public class AuctionController {
     private BidStorageService bidStorageService;
 
     @Autowired
-    private BidEventPublisher bidEventPublisher;
-
-    @Autowired
     private CatalogServiceClient catalogServiceClient;
 
     @Autowired(required = false)
     private AiServiceClient aiServiceClient;
     @Autowired
     private AuthenticatedUser authenticatedUser;
+    @Value("${auth.token.secret:local-development-secret-change-me-123456789}")
+    private String internalServiceToken;
 
     @GetMapping("/test")
     public ResponseEntity<String> test() {
@@ -83,17 +82,28 @@ public class AuctionController {
             // Save bid to S3
             bidStorageService.saveBid(itemId, bidderEmail, bidAmount.doubleValue());
 
-            // Publish bid event for notifications
-            // TODO: Get actual item owner from catalog service
-            bidEventPublisher.publishBidEvent(itemId, bidderEmail, bidAmount.doubleValue(), 
-                "balu.learnz@gmail.com", "Auction Item");
+            String creatorEmail = itemCreator(item);
+            String itemName = String.valueOf(item.getOrDefault("name", "Hobby item"));
+            String currency = String.valueOf(item.getOrDefault("currency", "INR"));
+            try {
+                if (aiServiceClient != null && creatorEmail != null) {
+                    aiServiceClient.sendBidPlacedEmails(internalServiceToken, Map.of(
+                            "creatorEmail", creatorEmail,
+                            "bidderEmail", bidderEmail,
+                            "itemName", itemName,
+                            "bidAmount", bidAmount.toPlainString(),
+                            "currency", currency));
+                }
+            } catch (Exception emailError) {
+                System.err.println("Bid was saved, but email notification failed: " + emailError.getMessage());
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Bid placed successfully");
             response.put("itemId", itemId);
             response.put("bidAmount", bidAmount);
             response.put("minimumBid", minimumBid);
-            response.put("currency", "INR");
+            response.put("currency", currency);
 
             return ResponseEntity.ok(response);
 
@@ -121,12 +131,19 @@ public class AuctionController {
         }
     }
 
+    private static String itemCreator(Map<String, Object> item) {
+        Object creator = item.get("email");
+        if (creator == null) creator = item.get("creatorEmail");
+        if (creator == null || creator.toString().isBlank()) return null;
+        return creator.toString();
+    }
+
     @GetMapping("/bids/{itemId}")
     public ResponseEntity<List<Map<String, Object>>> getBidsForItem(@PathVariable String itemId) {
         try {
             System.out.println("🔍 Getting bids for item: " + itemId);
             List<Map<String, Object>> bids = bidStorageService.getBidsForItem(itemId);
-            return ResponseEntity.ok(bids);
+            return ResponseEntity.ok(publicBids(bids));
         } catch (Exception e) {
             System.err.println("❌ Error getting bids: " + e.getMessage());
             return ResponseEntity.badRequest().body(null);
@@ -139,7 +156,7 @@ public class AuctionController {
             String itemId = request.get("itemId");
             System.out.println("🔍 Getting bids for item (POST): " + itemId);
             List<Map<String, Object>> bids = bidStorageService.getBidsForItem(itemId);
-            return ResponseEntity.ok(bids);
+            return ResponseEntity.ok(publicBids(bids));
         } catch (Exception e) {
             System.err.println("❌ Error getting bids: " + e.getMessage());
             return ResponseEntity.badRequest().body(null);
@@ -169,6 +186,7 @@ public class AuctionController {
     public ResponseEntity<?> completeBidding(@RequestBody Map<String, String> request,
             @CookieValue("bmh_session") String token) {
         String itemId = request.get("itemId");
+        String selectedBidId = request.get("bidId");
         try {
             String itemName = request.get("itemName");
             AuthenticatedUser.Identity identity = authenticatedUser.require(token);
@@ -181,9 +199,14 @@ public class AuctionController {
                 error.put("message", "Item ID is required");
                 return ResponseEntity.badRequest().body(error);
             }
+            if (selectedBidId == null || selectedBidId.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_BID_ID",
+                        "message", "Select a bid to approve"));
+            }
 
             Map<String, Object> item = catalogServiceClient.getItem(itemId);
-            String creator = item == null ? null : String.valueOf(item.getOrDefault("email", item.get("creatorEmail")));
+            String creator = item == null ? null : itemCreator(item);
             if (!identity.isAdmin() && !sellerEmail.equalsIgnoreCase(creator)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only the seller can approve a winning bid"));
             }
@@ -196,14 +219,16 @@ public class AuctionController {
                 return ResponseEntity.status(404).body(error);
             }
 
-            // Find highest bid
             Map<String, Object> winningBid = bids.stream()
-                .max(Comparator.comparing(bid -> Double.parseDouble(bid.get("bidAmount").toString())))
+                .filter(bid -> selectedBidId.equals(String.valueOf(bid.get("bidId"))))
+                .findFirst()
                 .orElse(null);
 
             if (winningBid != null) {
                 String winnerEmail = (String) winningBid.get("bidderEmail");
                 Double winningAmount = Double.parseDouble(winningBid.get("bidAmount").toString());
+                String approvedItemName = itemName != null ? itemName : String.valueOf(item.getOrDefault("name", "Hobby item"));
+                String currency = String.valueOf(item.getOrDefault("currency", "INR"));
 
                 // Update item status to SALE_IN_PROGRESS
                 try {
@@ -217,16 +242,29 @@ public class AuctionController {
 
                 // Send WhatsApp approval notifications to both buyer and seller
                 try {
-                    if (aiServiceClient != null && sellerEmail != null) {
+                    if (aiServiceClient != null && creator != null) {
                         java.util.Map<String, String> notifyReq = new HashMap<>();
-                        notifyReq.put("sellerPhone", sellerEmail);
+                        notifyReq.put("sellerPhone", creator);
                         notifyReq.put("buyerPhone",  winnerEmail);
-                        notifyReq.put("itemName",    itemName != null ? itemName : "Auction Item");
+                        notifyReq.put("itemName", approvedItemName);
                         aiServiceClient.notifyApproval(notifyReq);
                         System.out.println("✅ WhatsApp approval notifications sent");
                     }
                 } catch (Exception e) {
                     System.out.println("⚠️ Could not send approval WhatsApp: " + e.getMessage());
+                }
+
+                try {
+                    if (aiServiceClient != null) {
+                        aiServiceClient.sendBidApprovedEmails(internalServiceToken, Map.of(
+                                "creatorEmail", creator,
+                                "bidderEmail", winnerEmail,
+                                "itemName", approvedItemName,
+                                "bidAmount", winningAmount.toString(),
+                                "currency", currency));
+                    }
+                } catch (Exception e) {
+                    System.err.println("Approval completed, but email notification failed: " + e.getMessage());
                 }
 
                 // Build success response (no payment service — removed for OCI free tier)
@@ -239,9 +277,9 @@ public class AuctionController {
             }
 
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "NO_VALID_BIDS");
-            error.put("message", "No valid bids found for item");
-            return ResponseEntity.status(400).body(error);
+            error.put("error", "BID_NOT_FOUND");
+            error.put("message", "The selected bid was not found for this item");
+            return ResponseEntity.status(404).body(error);
         } catch (ResourceNotFoundException e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "ITEM_NOT_FOUND");
@@ -263,5 +301,28 @@ public class AuctionController {
             e.printStackTrace();
             return ResponseEntity.status(500).body(error);
         }
+    }
+
+    private static List<Map<String, Object>> publicBids(List<Map<String, Object>> bids) {
+        return bids.stream().map(bid -> {
+            Map<String, Object> sanitized = new LinkedHashMap<>(bid);
+            sanitized.put("bidderEmail", maskIdentity(String.valueOf(bid.get("bidderEmail"))));
+            return sanitized;
+        }).toList();
+    }
+
+    static String maskIdentity(String identity) {
+        if (identity == null || identity.isBlank() || "null".equals(identity)) return "Anonymous";
+        int at = identity.indexOf('@');
+        if (at > 0) {
+            String username = identity.substring(0, at);
+            String visible = username.substring(0, Math.min(2, username.length()));
+            return visible + "*****" + identity.substring(at);
+        }
+        String digits = identity.replaceAll("\\D", "");
+        if (digits.length() >= 7) {
+            return "*****" + digits.substring(digits.length() - 4);
+        }
+        return "Anonymous";
     }
 }

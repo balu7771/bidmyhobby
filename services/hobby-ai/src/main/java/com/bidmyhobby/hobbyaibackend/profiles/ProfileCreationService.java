@@ -22,6 +22,10 @@ public class ProfileCreationService {
         }
         
         System.out.println("Loading profiles from S3...");
-        simpleProfileService.saveProfilesToDB();
+        simpleProfileService.saveProfilesToDB(numberOfProfiles);
+    }
+
+    public void ensureProfilesAvailable(int numberOfProfiles) {
+        simpleProfileService.ensureProfilesAvailable(numberOfProfiles);
     }
 }

@@ -15,6 +15,8 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class ConversationController {
 
+    static final int MAX_USER_MESSAGES = 10;
+
     private final ConversationRepository conversationRepository;
     private final ProfileRepository profileRepository;
     private final ConversationService conversationService;
@@ -41,12 +43,19 @@ public class ConversationController {
 
     @PostMapping
     public Conversation createConversation(@RequestBody CreateConversationRequest request) {
+        Conversation existing = conversationRepository
+                .findFirstByProfileIdAndUserId(request.profileId(), request.userId())
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
         List<ChatMessage> messages = new ArrayList<>();
         if (request.initialMessage() != null && !request.initialMessage().isBlank()) {
             messages.add(new ChatMessage(request.initialMessage(), request.userId(), LocalDateTime.now()));
         }
         
-        Conversation conversation = new Conversation(null, request.profileId(), messages);
+        Conversation conversation = new Conversation(null, request.profileId(), request.userId(), messages);
         conversation = conversationRepository.save(conversation);
         
         if (!messages.isEmpty()) {
@@ -83,6 +92,17 @@ public class ConversationController {
                         HttpStatus.NOT_FOUND,
                         "Unable to find conversation with the ID " + id
                 ));
+
+        if (conversation.userId() != null && !conversation.userId().equals(chatMessage.authorId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This conversation belongs to another user");
+        }
+
+        if (hasReachedMessageLimit(conversation)) {
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "This conversation has reached its 10-message limit"
+            );
+        }
         
         String profileId = conversation.profileId();
         
@@ -117,10 +137,18 @@ public class ConversationController {
         return conversationRepository.save(conversation);
     }
 
+    static boolean hasReachedMessageLimit(Conversation conversation) {
+        long userMessageCount = conversation.messages().stream()
+                .filter(message -> !conversation.profileId().equals(message.authorId()))
+                .filter(message -> !"AI".equals(message.authorId()))
+                .count();
+        return userMessageCount >= MAX_USER_MESSAGES;
+    }
+
     private boolean isExternalUser(String userId) {
         if (userId == null) return true;
         return userId.contains("@") 
-            || "Guest".equals(userId) 
+            || userId.startsWith("Guest")
             || userId.startsWith("+") 
             || userId.matches("\\d+");
     }

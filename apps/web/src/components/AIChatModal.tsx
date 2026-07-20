@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, User, Sparkles, Loader2, Bot } from "lucide-react";
+import { X, Send, User } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
 interface ChatMessage {
@@ -15,6 +15,18 @@ interface AIChatModalProps {
     onClose: () => void;
 }
 
+const MAX_USER_MESSAGES = 10;
+
+function chatUserId() {
+    const signedInUser = localStorage.getItem("userEmail");
+    if (signedInUser) return signedInUser;
+    const existingGuest = localStorage.getItem("aiChatGuestId");
+    if (existingGuest) return existingGuest;
+    const guestId = `Guest-${crypto.randomUUID()}`;
+    localStorage.setItem("aiChatGuestId", guestId);
+    return guestId;
+}
+
 export function AIChatModal({ profile, onClose }: AIChatModalProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [newMessage, setNewMessage] = useState("");
@@ -22,6 +34,11 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
     const [conversationId, setConversationId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [userEmail, setUserEmail] = useState<string>("Guest");
+    const [error, setError] = useState("");
+    const userMessageCount = messages.filter(message =>
+        message.authorId !== profile.id && message.authorId !== "AI"
+    ).length;
+    const limitReached = userMessageCount >= MAX_USER_MESSAGES;
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -32,11 +49,12 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
     }, [messages, isTyping]);
 
     useEffect(() => {
-        setUserEmail(localStorage.getItem("userEmail") || "Guest");
-        startConversation();
+        const actorId = chatUserId();
+        setUserEmail(actorId);
+        startConversation(actorId);
     }, [profile]);
 
-    const startConversation = async () => {
+    const startConversation = async (actorId: string) => {
         setIsTyping(true);
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -44,7 +62,7 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    userId: localStorage.getItem("userEmail") || "Guest",
+                    userId: actorId,
                     profileId: profile.id,
                     initialMessage: `Hi ${profile.firstName}! I'd love to chat about ${profile.mainHobby || "hobbies"}.`
                 }),
@@ -63,10 +81,11 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !conversationId || isTyping) return;
+        if (!newMessage.trim() || !conversationId || isTyping || limitReached) return;
 
         const userMsg = newMessage.trim();
         setNewMessage("");
+        setError("");
         
         // Optimistically add user message
         const tempUserMsg: ChatMessage = {
@@ -90,9 +109,16 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
             if (res.ok) {
                 const data = await res.json();
                 setMessages(data.messages || []);
+            } else {
+                setMessages(prev => prev.slice(0, -1));
+                setError(res.status === 429
+                    ? "You’ve reached the 10-message limit for this conversation."
+                    : "We couldn’t send that message. Please try again.");
             }
         } catch (err) {
             console.error("Failed to send message:", err);
+            setMessages(prev => prev.slice(0, -1));
+            setError("We couldn’t send that message. Please try again.");
         } finally {
             setIsTyping(false);
         }
@@ -184,18 +210,24 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
 
                 {/* Input */}
                 <form onSubmit={handleSendMessage} className="p-4 bg-white/5 border-t border-white/10">
+                    <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                        <span className={limitReached ? "font-semibold text-amber-300" : "text-slate-500"}>
+                            {limitReached ? "Conversation limit reached" : `${userMessageCount} of ${MAX_USER_MESSAGES} messages used`}
+                        </span>
+                        {error && <span role="alert" className="text-right text-red-300">{error}</span>}
+                    </div>
                     <div className="relative">
                         <input
                             type="text"
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder={`Message ${profile.firstName}...`}
+                            placeholder={limitReached ? "10-message limit reached" : `Message ${profile.firstName}...`}
                             className="w-full bg-background/50 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm text-white focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
-                            disabled={isTyping}
+                            disabled={isTyping || limitReached}
                         />
                         <button
                             type="submit"
-                            disabled={!newMessage.trim() || isTyping}
+                            disabled={!newMessage.trim() || isTyping || limitReached}
                             className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:grayscale"
                         >
                             <Send className="w-4 h-4" />

@@ -26,4 +26,9 @@ class AuctionControllerTest {
         assertEquals(new BigDecimal("650"),
                 AuctionController.minimumBid(Map.of("basePrice", 650)));
     }
+
+    @Test
+    void masksBidderEmailBeforeReturningBidData() {
+        assertEquals("ba*****@gmail.com", AuctionController.maskIdentity("balaji.dreamz@gmail.com"));
+    }
 }
