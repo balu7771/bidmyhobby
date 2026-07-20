@@ -124,6 +124,13 @@ public class OpenAiListingService {
                   natural statements such as "asking 1500", "I want ₹1,500", "price is 1500", or
                   "sell it for 1500". Return null when the seller has not stated an asking price.
 
+                Determine listingType from the seller's intent:
+                - DISPLAY_ONLY when they say "not for sale", "display only", "view only",
+                  "not for bidding", "showcase only", or otherwise do not want bids.
+                - AUCTION when the item should accept bids. Default to AUCTION if no preference is stated.
+                A DISPLAY_ONLY item never requires an asking price. Confirm in assistantMessage that
+                people will be able to view it but not bid on it.
+
                 Ask exactly one short, friendly follow-up question for the most important missing
                 detail. Do not ask the seller to confirm the AI estimate if they already stated
                 their own asking price. Set readyForReview only when title, description, category,
@@ -143,6 +150,7 @@ public class OpenAiListingService {
         props.put("description", Map.of("type", "string"));
         props.put("category", Map.of("type", "string"));
         props.put("condition", Map.of("type", "string"));
+        props.put("listingType", Map.of("type", "string", "enum", List.of("AUCTION", "DISPLAY_ONLY")));
         props.put("suggestedPrice", Map.of("type", "number", "minimum", 0));
         props.put("sellerAskingPrice", Map.of(
                 "anyOf", List.of(
@@ -162,6 +170,6 @@ public class OpenAiListingService {
 
     public record ListingAnalysis(boolean hobbyItem, boolean safe, double confidence,
             String moderationReason, String title, String description, String category,
-            String condition, double suggestedPrice, Double sellerAskingPrice, String city, String size,
+            String condition, String listingType, double suggestedPrice, Double sellerAskingPrice, String city, String size,
             String assistantMessage, boolean readyForReview, List<String> missingFields) {}
 }

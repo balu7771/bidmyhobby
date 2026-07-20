@@ -79,6 +79,7 @@ public class ListingConversationService {
             c.setBasePrice(statedPrice.get());
             c.setPriceConfirmed(true);
         }
+        inferListingType(userMessage).ifPresent(c::setListingType);
         append(c, "user", userMessage);
         c = conversations.save(c);
         if (images.countByConversationId(id) == 0) {
@@ -98,6 +99,7 @@ public class ListingConversationService {
         if (patch.containsKey("size")) c.setSize(clean(patch.get("size")));
         if (patch.containsKey("basePrice")) c.setBasePrice(asDouble(patch.get("basePrice")));
         if (patch.containsKey("currency")) c.setCurrency(clean(patch.get("currency")));
+        if (patch.containsKey("listingType")) c.setListingType(normalizeListingType(clean(patch.get("listingType"))));
         if (Boolean.TRUE.equals(patch.get("confirmSuggestedPrice"))) {
             c.setBasePrice(c.getSuggestedPrice());
             c.setPriceConfirmed(true);
@@ -157,11 +159,13 @@ public class ListingConversationService {
         c.setDescription(maskContact(a.description()));
         c.setCategory(a.category());
         c.setConditionLabel(a.condition());
+        c.setListingType(inferListingType(c.getTranscriptJson())
+                .orElseGet(() -> normalizeListingType(a.listingType())));
         // Retain the first independent AI valuation. Seller messages must never rewrite it.
         if (c.getSuggestedPrice() == null) {
             c.setSuggestedPrice(a.suggestedPrice());
         }
-        if (a.sellerAskingPrice() != null && !c.isPriceConfirmed()) {
+        if (a.sellerAskingPrice() != null && !c.isPriceConfirmed() && isAuction(c)) {
             c.setBasePrice(a.sellerAskingPrice());
             c.setPriceConfirmed(true);
         }
@@ -184,7 +188,7 @@ public class ListingConversationService {
         if (!notBlank(c.getTitle())) missing.add("title");
         if (!notBlank(c.getDescription())) missing.add("description");
         if (!notBlank(c.getCity())) missing.add("city");
-        if (!c.isPriceConfirmed() || c.getBasePrice() == null) missing.add("askingPrice");
+        if (isAuction(c) && (!c.isPriceConfirmed() || c.getBasePrice() == null)) missing.add("askingPrice");
         List<ListingConversationResponse.ImageSummary> imageList =
                 images.findByConversationIdOrderByCreatedAtAsc(c.getId()).stream()
                         .map(i -> new ListingConversationResponse.ImageSummary(i.getId(), i.getFilename(), i.getContentType()))
@@ -197,6 +201,7 @@ public class ListingConversationService {
         draft.put("suggestedPrice", c.getSuggestedPrice());
         draft.put("basePrice", c.getBasePrice());
         draft.put("currency", c.getCurrency());
+        draft.put("listingType", c.getListingType());
         draft.put("city", c.getCity());
         draft.put("size", c.getSize());
         draft.put("confidence", c.getConfidence());
@@ -228,7 +233,7 @@ public class ListingConversationService {
 
     private boolean ready(ListingConversation c) {
         return notBlank(c.getTitle()) && notBlank(c.getDescription()) && notBlank(c.getCity())
-                && c.getBasePrice() != null && c.getBasePrice() >= 0 && c.isPriceConfirmed();
+                && (!isAuction(c) || (c.getBasePrice() != null && c.getBasePrice() >= 0 && c.isPriceConfirmed()));
     }
     private boolean terminal(ListingConversation c) {
         return Set.of("PUBLISHED", "REVIEW_REQUIRED", "REJECTED", "CANCELLED").contains(c.getState());
@@ -251,6 +256,21 @@ public class ListingConversationService {
         } catch (NumberFormatException ignored) {
             return Optional.empty();
         }
+    }
+    private Optional<String> inferListingType(String message) {
+        if (message.matches("(?is).*(not\\s+for\\s+(sale|bidding)|display\\s+only|view\\s+only|showcase\\s+only|do\\s+not\\s+(sell|auction)).*")) {
+            return Optional.of("DISPLAY_ONLY");
+        }
+        if (message.matches("(?is).*(for\\s+(sale|auction|bidding)|accept\\s+bids|sell\\s+it).*")) {
+            return Optional.of("AUCTION");
+        }
+        return Optional.empty();
+    }
+    private String normalizeListingType(String value) {
+        return "DISPLAY_ONLY".equalsIgnoreCase(value) ? "DISPLAY_ONLY" : "AUCTION";
+    }
+    private boolean isAuction(ListingConversation c) {
+        return !"DISPLAY_ONLY".equals(c.getListingType());
     }
     private String safeFilename(String filename) {
         return filename == null ? "image.jpg" : filename.replaceAll("[^a-zA-Z0-9._-]", "_");

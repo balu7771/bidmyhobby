@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { clearSession } from "@/lib/auth";
 
 export function UserHeader() {
     const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -29,7 +30,10 @@ export function UserHeader() {
     }, []);
 
     const handleLogout = () => {
-        localStorage.removeItem("userEmail");
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/auth/logout`, {
+            method: "POST", credentials: "include"
+        }).catch(() => {});
+        clearSession();
         setUserEmail(null);
         router.push("/");
     };

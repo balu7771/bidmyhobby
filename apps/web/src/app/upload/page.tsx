@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronRight, ImagePlus, Loader2, Pencil, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { authFetch } from "@/lib/auth";
 
 type Conversation = {
   conversationId: string;
@@ -32,7 +33,7 @@ export default function UploadPage() {
   const busy = action !== null;
 
   async function call(url: string, init?: RequestInit) {
-    const response = await fetch(url, init);
+    const response = await authFetch(url, init);
     const body = await response.text();
     if (!response.ok) {
       try { throw new Error(JSON.parse(body).error || `Request failed (${response.status})`); }
@@ -112,7 +113,8 @@ export default function UploadPage() {
     setAction("saving"); setError("");
     const body = confirmSuggestedPrice ? { confirmSuggestedPrice: true } : {
       title: draft.title, description: draft.description, city: draft.city, size: draft.size,
-      basePrice: Number(draft.basePrice), currency: draft.currency || "INR"
+      ...(draft.listingType === "DISPLAY_ONLY" ? {} : { basePrice: Number(draft.basePrice) }),
+      currency: draft.currency || "INR", listingType: draft.listingType || "AUCTION"
     };
     try {
       setChat(await call(`${API}/catalog/listing-conversations/${chat.conversationId}/draft?ownerId=${encodeURIComponent(owner)}`, {
@@ -160,7 +162,7 @@ export default function UploadPage() {
     <main className="min-h-screen px-3 py-5 text-white sm:px-5 sm:py-8">
       <div className="mx-auto mb-5 max-w-6xl">
         <div className="flex items-start justify-between gap-4">
-          <div><h1 className="text-2xl font-bold sm:text-3xl">Sell a hobby item</h1><p className="mt-1 text-sm text-slate-400">Add photos and answer a few questions. You can review everything before it goes live.</p></div>
+        <div><h1 className="text-2xl font-bold sm:text-3xl">Share a hobby item</h1><p className="mt-1 text-sm text-slate-400">Offer it for bidding or publish it as display only. You can decide naturally in chat.</p></div>
           {chat && <button disabled={busy} onClick={newListing} className="flex shrink-0 items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" /> Start over</button>}
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2">
@@ -203,14 +205,15 @@ export default function UploadPage() {
               <Field label="Title" value={draft.title || ""} onChange={value => setDraft({ ...draft, title: value })} />
               <label className="block text-xs text-slate-400">Description<textarea rows={5} value={draft.description || ""} onChange={event => setDraft({ ...draft, description: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-white" /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="City" value={draft.city || ""} onChange={value => setDraft({ ...draft, city: value })} /><Field label="Size (optional)" value={draft.size || ""} onChange={value => setDraft({ ...draft, size: value })} /></div>
-              <Field label="Your asking price (INR)" type="number" value={draft.basePrice ?? ""} onChange={value => setDraft({ ...draft, basePrice: value })} />
-              {draft.suggestedPrice > 0 && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">Estimated market value: ₹{Math.round(draft.suggestedPrice).toLocaleString("en-IN")}. This is only a guide—choose the starting price you want.</p>}
+              <label className="block text-xs text-slate-400">Listing type<select value={draft.listingType || "AUCTION"} onChange={event => setDraft({ ...draft, listingType: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-[#111827] p-3 text-sm text-white"><option value="AUCTION">Open for bidding</option><option value="DISPLAY_ONLY">Display only — not for sale</option></select></label>
+              {draft.listingType !== "DISPLAY_ONLY" && <Field label="Your asking price (INR)" type="number" value={draft.basePrice ?? ""} onChange={value => setDraft({ ...draft, basePrice: value })} />}
+              {draft.listingType !== "DISPLAY_ONLY" && draft.suggestedPrice > 0 && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">Estimated market value: ₹{Math.round(draft.suggestedPrice).toLocaleString("en-IN")}. This is only a guide—choose the starting price you want.</p>}
               <div className="grid grid-cols-2 gap-2"><button disabled={busy} onClick={() => setEditing(false)} className="rounded-xl border border-white/15 py-2.5 text-sm">Cancel</button><button disabled={busy} onClick={() => save()} className="rounded-xl bg-blue-600 py-2.5 text-sm font-semibold">Save changes</button></div>
             </> : <>
               <div><h3 className="text-xl font-bold">{chat?.draft.title}</h3><p className="mt-2 text-sm leading-relaxed text-slate-300">{chat?.draft.description}</p></div>
-              <div className="grid grid-cols-2 gap-2 text-sm"><Detail label="Estimated market value" value={chat?.draft.suggestedPrice != null ? `₹${Math.round(chat.draft.suggestedPrice).toLocaleString("en-IN")}` : "—"} /><Detail label="Your starting price" value={chat?.draft.basePrice != null ? `₹${Number(chat.draft.basePrice).toLocaleString("en-IN")}` : "Choose a price"} /><Detail label="Category" value={chat?.draft.category} /><Detail label="City" value={chat?.draft.city} /></div>
-              {chat?.draft.suggestedPrice > 0 && <p className="text-xs leading-relaxed text-slate-400">The market estimate is a guide. Your starting price is your choice and can be higher or lower.</p>}
-              {chat?.draft.suggestedPrice > 0 && chat.missingFields.includes("askingPrice") && <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"><p className="text-sm text-slate-200">What price would you like buyers to start from?</p><p className="text-xs text-slate-400">Type it in the chat, for example “My asking price is 1500”, or accept the AI estimate.</p><button disabled={busy} onClick={() => save(true)} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white">Accept ₹{Math.round(chat.draft.suggestedPrice).toLocaleString("en-IN")} as my price</button></div>}
+              <div className="grid grid-cols-2 gap-2 text-sm"><Detail label="Listing type" value={chat?.draft.listingType === "DISPLAY_ONLY" ? "Display only" : "Open for bidding"} />{chat?.draft.listingType !== "DISPLAY_ONLY" && <Detail label="Your starting price" value={chat?.draft.basePrice != null ? `₹${Number(chat.draft.basePrice).toLocaleString("en-IN")}` : "Choose a price"} />}<Detail label="Category" value={chat?.draft.category} /><Detail label="City" value={chat?.draft.city} /></div>
+              {chat?.draft.listingType === "DISPLAY_ONLY" ? <p className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">Visitors can open the photos full screen. Bidding and sale controls will be hidden.</p> : chat?.draft.suggestedPrice > 0 && <p className="text-xs leading-relaxed text-slate-400">Estimated market value: ₹{Math.round(chat.draft.suggestedPrice).toLocaleString("en-IN")}. Your starting price can be higher or lower.</p>}
+              {chat?.draft.listingType !== "DISPLAY_ONLY" && chat?.draft.suggestedPrice > 0 && chat.missingFields.includes("askingPrice") && <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"><p className="text-sm text-slate-200">What price would you like buyers to start from?</p><p className="text-xs text-slate-400">Type it in the chat, for example “My asking price is 1500”, or accept the AI estimate.</p><button disabled={busy} onClick={() => save(true)} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white">Accept ₹{Math.round(chat.draft.suggestedPrice).toLocaleString("en-IN")} as my price</button></div>}
               <button disabled={busy} onClick={() => setEditing(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 py-2.5 text-sm"><Pencil className="h-4 w-4" /> Edit draft</button>
               {!!chat?.missingFields.length && <div className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Before publishing, add: {chat.missingFields.map(friendlyMissingField).join(", ")}.</div>}
               <button onClick={publish} disabled={!ready || busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold shadow-lg shadow-emerald-950/30 disabled:cursor-not-allowed disabled:opacity-40">{action === "publishing" ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}{action === "publishing" ? "Publishing…" : "Publish hobby item"}{ready && !busy && <ChevronRight className="h-5 w-5" />}</button>

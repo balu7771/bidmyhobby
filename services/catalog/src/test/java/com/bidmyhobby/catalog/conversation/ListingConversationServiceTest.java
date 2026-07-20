@@ -14,6 +14,33 @@ import static org.mockito.Mockito.*;
 class ListingConversationServiceTest {
 
     @Test
+    void displayOnlyIntentDoesNotRequireAnAskingPrice() {
+        ListingConversationRepository conversations = mock(ListingConversationRepository.class);
+        ListingDraftImageRepository images = mock(ListingDraftImageRepository.class);
+        OpenAiListingService openAi = mock(OpenAiListingService.class);
+        ListingConversation conversation = new ListingConversation("owner@example.com");
+
+        when(conversations.findById(conversation.getId())).thenReturn(Optional.of(conversation));
+        when(conversations.save(any(ListingConversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(conversations.saveAndFlush(any(ListingConversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(images.countByConversationId(conversation.getId())).thenReturn(1L);
+        when(images.findByConversationIdOrderByCreatedAtAsc(conversation.getId())).thenReturn(List.of());
+        when(openAi.analyze(anyString(), anyList())).thenReturn(new OpenAiListingService.ListingAnalysis(
+                true, true, 0.95, "", "Model train", "A restored model train", "Models",
+                "Used", "DISPLAY_ONLY", 4000, null, "Pune", "", "This will be display only.", true, List.of()));
+
+        ListingConversationService service = new ListingConversationService(
+                conversations, images, openAi, mock(CatalogService.class), new ObjectMapper());
+
+        ListingConversationResponse response = service.message(
+                conversation.getId(), "owner@example.com", "This is display only and not for sale");
+
+        assertEquals("DISPLAY_ONLY", response.draft().get("listingType"));
+        org.junit.jupiter.api.Assertions.assertFalse(response.missingFields().contains("askingPrice"));
+        org.junit.jupiter.api.Assertions.assertTrue(response.allowedActions().contains("PUBLISH"));
+    }
+
+    @Test
     void reloadsConversationAfterExternalAnalysisBeforeSavingResults() {
         ListingConversationRepository conversations = mock(ListingConversationRepository.class);
         ListingDraftImageRepository images = mock(ListingDraftImageRepository.class);
@@ -27,7 +54,7 @@ class ListingConversationServiceTest {
         when(images.findByConversationIdOrderByCreatedAtAsc(conversation.getId())).thenReturn(List.of());
         when(openAi.analyze(anyString(), anyList())).thenReturn(new OpenAiListingService.ListingAnalysis(
                 true, true, 0.92, "", "Camera", "A hobby camera", "Photography",
-                "Used", 5000, null, "Hyderabad", "", "Confirm the price.", false, List.of("price")));
+                "Used", "AUCTION", 5000, null, "Hyderabad", "", "Confirm the price.", false, List.of("price")));
 
         ListingConversationService service = new ListingConversationService(
                 conversations, images, openAi, mock(CatalogService.class), new ObjectMapper());
@@ -55,7 +82,7 @@ class ListingConversationServiceTest {
         when(images.findByConversationIdOrderByCreatedAtAsc(conversation.getId())).thenReturn(List.of());
         when(openAi.analyze(anyString(), anyList())).thenReturn(new OpenAiListingService.ListingAnalysis(
                 true, true, 0.95, "", "Camera", "A hobby camera", "Photography",
-                "Used", 1500, 1500.0, "Hyderabad", "", "What city are you in?", false, List.of("city")));
+                "Used", "AUCTION", 1500, 1500.0, "Hyderabad", "", "What city are you in?", false, List.of("city")));
 
         ListingConversationService service = new ListingConversationService(
                 conversations, images, openAi, mock(CatalogService.class), new ObjectMapper());

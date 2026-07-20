@@ -27,6 +27,8 @@ public class WhatsAppAgentService {
 
     @Value("${app.site.url:https://bidmyhobby.com}")
     private String siteUrl;
+    @Value("${whatsapp.enabled:false}")
+    private boolean whatsappEnabled;
 
     private final WhatsAppSessionRepository sessionRepository;
     private final OtpCacheRepository otpCacheRepository;
@@ -50,6 +52,7 @@ public class WhatsAppAgentService {
     }
 
     public void sendWhatsAppMessage(String to, String messageBody) {
+        if (!whatsappEnabled) return;
         if (accountSid == null || accountSid.isEmpty()) {
             System.out.println("MOCK WA to " + to + ": " + messageBody);
             return;
@@ -68,6 +71,7 @@ public class WhatsAppAgentService {
     }
 
     public java.util.Map<String, Object> generateAndSendOtp(String phoneNumber) {
+        if (!whatsappEnabled) return java.util.Map.of("error", "WHATSAPP_DISABLED", "message", "WhatsApp is not enabled");
         // Check rate limiting: max 3 OTP requests per phone per hour
         long otpCountLastHour = otpCacheRepository.findByPhoneNumberAndCreatedAtAfter(
             phoneNumber,
@@ -139,6 +143,7 @@ public class WhatsAppAgentService {
     }
 
     private boolean sendWhatsAppMessageBoolean(String to, String messageBody) {
+        if (!whatsappEnabled) return false;
         if (accountSid == null || accountSid.isEmpty()) {
             System.out.println("MOCK WA to " + to + ": " + messageBody);
             return false;

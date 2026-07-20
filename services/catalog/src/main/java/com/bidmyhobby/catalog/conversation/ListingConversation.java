@@ -27,6 +27,7 @@ public class ListingConversation {
     private Double suggestedPrice;
     private Double basePrice;
     private String currency = "INR";
+    private String listingType = "AUCTION";
     private String city;
     private String size;
     private boolean hobbyItem;
@@ -72,6 +73,8 @@ public class ListingConversation {
     public void setBasePrice(Double basePrice) { this.basePrice = basePrice; }
     public String getCurrency() { return currency; }
     public void setCurrency(String currency) { this.currency = currency; }
+    public String getListingType() { return listingType; }
+    public void setListingType(String listingType) { this.listingType = listingType; }
     public String getCity() { return city; }
     public void setCity(String city) { this.city = city; }
     public String getSize() { return size; }

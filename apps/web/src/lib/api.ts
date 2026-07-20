@@ -6,21 +6,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/a
 // Create an Axios instance with default configurations
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-// Request interceptor to add JWT token if available
-apiClient.interceptors.request.use((config) => {
-    if (typeof window !== 'undefined') {
-        const token = localStorage.getItem('auth_token');
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-    }
-    return config;
-});
 
 // --- AI Adapter Service API Contracts ---
 
@@ -49,9 +40,6 @@ export const sendOTP = async (email: string) => {
 
 export const verifyOTP = async (email: string, otp: string) => {
     const response = await apiClient.post('/auth/otp/verify', { email, otp });
-    if (response.data.token) {
-        localStorage.setItem('auth_token', response.data.token);
-    }
     return response.data;
 };
 

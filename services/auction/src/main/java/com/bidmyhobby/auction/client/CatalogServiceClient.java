@@ -8,7 +8,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.Map;
 
-@FeignClient(name = "catalog-service")
+@FeignClient(
+    name = "catalog-service",
+    url = "${CATALOG_SERVICE_URL:http://localhost:8081}"
+)
 public interface CatalogServiceClient {
     
     @GetMapping("/api/catalog/item/{itemId}")

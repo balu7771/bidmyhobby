@@ -1,6 +1,7 @@
 package com.bidmyhobby.catalog.controller;
 
 import com.bidmyhobby.catalog.event.NotificationPublisher;
+import com.bidmyhobby.catalog.auth.AuthenticatedUser;
 import com.bidmyhobby.catalog.model.Item;
 import com.bidmyhobby.catalog.service.CatalogService;
 import com.bidmyhobby.catalog.service.ItemProcessingService;
@@ -41,6 +42,8 @@ public class CatalogController {
 
     @Autowired
     S3Client s3Client;
+    @Autowired
+    AuthenticatedUser authenticatedUser;
 
     // @Autowired
     // ItemProcessingService itemProcessingService; // Commented out for now
@@ -123,9 +126,11 @@ public class CatalogController {
     }
 
     @DeleteMapping("/items/{itemId}")
-    public ResponseEntity<?> deleteItem(@PathVariable String itemId, @RequestParam String email) {
+    public ResponseEntity<?> deleteItem(@PathVariable String itemId, @RequestParam(required = false) String email,
+            @CookieValue("bmh_session") String token) {
         try {
-            boolean deleted = catalogService.deleteItem(itemId, email);
+            var identity = authenticatedUser.require(token);
+            boolean deleted = catalogService.deleteItem(itemId, identity.email(), identity.isAdmin());
             if (deleted) {
                 return ResponseEntity.ok().body("Item deleted successfully");
             } else {
@@ -137,11 +142,13 @@ public class CatalogController {
     }
 
     @DeleteMapping("/items/images/{filename:.+}")
-    public ResponseEntity<?> deleteItemByFilename(@PathVariable String filename, @RequestParam String email) {
+    public ResponseEntity<?> deleteItemByFilename(@PathVariable String filename, @RequestParam(required = false) String email,
+            @CookieValue("bmh_session") String token) {
         try {
             // Strip timestamp prefix to get the actual itemId stored in DB
             String itemId = filename.contains(".") ? filename.substring(0, filename.lastIndexOf(".")) : filename;
-            boolean deleted = catalogService.deleteItem(itemId, email);
+            var identity = authenticatedUser.require(token);
+            boolean deleted = catalogService.deleteItem(itemId, identity.email(), identity.isAdmin());
             if (deleted) {
                 return ResponseEntity.ok().body("Item deleted successfully");
             } else {
@@ -153,14 +160,16 @@ public class CatalogController {
     }
 
     @PostMapping("/items/{itemId}/mark-sold")
-    public ResponseEntity<?> markAsSold(@PathVariable String itemId, @RequestParam String email) {
+    public ResponseEntity<?> markAsSold(@PathVariable String itemId, @RequestParam(required = false) String email,
+            @CookieValue("bmh_session") String token) {
         try {
-            Item item = catalogService.markAsSold(itemId, email);
+            String authenticatedEmail = authenticatedUser.require(token).email();
+            Item item = catalogService.markAsSold(itemId, authenticatedEmail);
 
             // Send sold notification email
             notificationPublisher.publishItemSoldEvent(
                     item.getItemId(),
-                    email,
+                    authenticatedEmail,
                     item.getName());
 
             return ResponseEntity.ok().body("Item marked as sold");
@@ -170,10 +179,11 @@ public class CatalogController {
     }
 
     @PostMapping("/items/{itemId}/sold")
-    public ResponseEntity<?> markSold(@PathVariable String itemId, @RequestParam String email) {
+    public ResponseEntity<?> markSold(@PathVariable String itemId, @RequestParam(required = false) String email,
+            @CookieValue("bmh_session") String token) {
         // Extract itemId from filename if it contains extension
         String cleanItemId = itemId.contains(".") ? itemId.substring(0, itemId.lastIndexOf(".")) : itemId;
-        return markAsSold(cleanItemId, email);
+        return markAsSold(cleanItemId, email, token);
     }
 
     /**

@@ -4,6 +4,7 @@ import com.bidmyhobby.hobbyaibackend.config.ImageStorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.bidmyhobby.hobbyaibackend.auth.AuthTokenService;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -18,15 +19,18 @@ public class ProfileController {
     private final ImageStorageService imageStorageService;
     private final ProfileSearchService profileSearchService;
     private final SimpleProfileService simpleProfileService;
+    private final AuthTokenService authTokenService;
 
     public ProfileController(ProfileRepository profileRepository, 
                            ImageStorageService imageStorageService,
                            ProfileSearchService profileSearchService,
-                           SimpleProfileService simpleProfileService) {
+                           SimpleProfileService simpleProfileService,
+                           AuthTokenService authTokenService) {
         this.profileRepository = profileRepository;
         this.imageStorageService = imageStorageService;
         this.profileSearchService = profileSearchService;
         this.simpleProfileService = simpleProfileService;
+        this.authTokenService = authTokenService;
     }
 
     @GetMapping
@@ -102,8 +106,17 @@ public class ProfileController {
     }
     
     @PostMapping("/user")
-    public ResponseEntity<Profile> createOrUpdateUserProfile(@RequestBody Profile userProfile) {
-        // Set or update user profile with email as ID
+    public ResponseEntity<Profile> createOrUpdateUserProfile(@RequestBody Profile userProfile,
+            @CookieValue("bmh_session") String sessionToken) {
+        AuthTokenService.Session session = authTokenService.verify(sessionToken);
+        userProfile.setId(session.email());
+        if (!userProfile.isWhatsappNotificationsEnabled()) {
+            userProfile.setWhatsappConsentAt(null);
+            userProfile.setWhatsappConsentVersion(null);
+        } else if (userProfile.getWhatsappConsentAt() == null) {
+            userProfile.setWhatsappConsentAt(java.time.LocalDateTime.now());
+            userProfile.setWhatsappConsentVersion("2026-07-19");
+        }
         Profile savedProfile = profileRepository.save(userProfile);
         return ResponseEntity.ok(savedProfile);
     }

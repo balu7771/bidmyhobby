@@ -53,8 +53,9 @@ public class CatalogService {
         item.setName(draft.getTitle());
         item.setDescription(maskContactDetails(draft.getDescription()));
         item.setCreatorEmail(draft.getOwnerId());
-        item.setBasePrice(BigDecimal.valueOf(draft.getBasePrice()));
+        if (draft.getBasePrice() != null) item.setBasePrice(BigDecimal.valueOf(draft.getBasePrice()));
         item.setSuggestedPrice(draft.getSuggestedPrice());
+        item.setListingType(draft.getListingType());
         item.setCurrency(draft.getCurrency());
         item.setSize(draft.getSize() == null || draft.getSize().isBlank() ? "N/A" : draft.getSize());
         item.setCity(draft.getCity());
@@ -87,14 +88,11 @@ public class CatalogService {
         return s3StorageService.getActiveItems();
     }
 
-    public boolean deleteItem(String itemId, String email) {
+    public boolean deleteItem(String itemId, String email, boolean isAdmin) {
         Item item = s3StorageService.getItem(itemId);
         if (item == null) {
             throw new RuntimeException("Item not found");
         }
-
-        // Admin bypass: platform admin can delete any item
-        boolean isAdmin = email != null && email.replaceAll("[^0-9]", "").endsWith("9353035490");
 
         if (!isAdmin && !item.getCreatorEmail().equals(email)) {
             throw new RuntimeException("Only the item creator or a platform admin can delete this item");

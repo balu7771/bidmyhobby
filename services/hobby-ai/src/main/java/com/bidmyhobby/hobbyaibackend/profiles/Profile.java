@@ -1,6 +1,7 @@
 package com.bidmyhobby.hobbyaibackend.profiles;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "profiles")
@@ -20,6 +21,10 @@ public class Profile {
     private String bio;
     private String imageUrl;
     private String mainHobby;
+    private String whatsappNumber;
+    private boolean whatsappNotificationsEnabled;
+    private LocalDateTime whatsappConsentAt;
+    private String whatsappConsentVersion;
     
     public Profile() {
         // Required by JPA
@@ -76,6 +81,14 @@ public class Profile {
     
     public String getMainHobby() { return mainHobby; }
     public void setMainHobby(String mainHobby) { this.mainHobby = mainHobby; }
+    public String getWhatsappNumber() { return whatsappNumber; }
+    public void setWhatsappNumber(String whatsappNumber) { this.whatsappNumber = whatsappNumber; }
+    public boolean isWhatsappNotificationsEnabled() { return whatsappNotificationsEnabled; }
+    public void setWhatsappNotificationsEnabled(boolean enabled) { this.whatsappNotificationsEnabled = enabled; }
+    public LocalDateTime getWhatsappConsentAt() { return whatsappConsentAt; }
+    public void setWhatsappConsentAt(LocalDateTime whatsappConsentAt) { this.whatsappConsentAt = whatsappConsentAt; }
+    public String getWhatsappConsentVersion() { return whatsappConsentVersion; }
+    public void setWhatsappConsentVersion(String whatsappConsentVersion) { this.whatsappConsentVersion = whatsappConsentVersion; }
     
     @Override
     public String toString() {
