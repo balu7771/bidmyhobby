@@ -116,13 +116,18 @@ public class OpenAiListingService {
                 phone numbers, email addresses, social handles, or addresses in title/description.
                 Be conservative about identity, authenticity and condition.
 
-                Pricing has two independent meanings:
-                - suggestedPrice is your own INR market-value estimate based on the item. Never copy
+                currency is the ISO 4217 code matching the seller's stated city/location: a US city
+                maps to USD, a UK city to GBP, a eurozone city to EUR, an Australian city to AUD,
+                a Canadian city to CAD, and an Indian city (or an unspecified/unknown city) to INR.
+
+                Pricing has two independent meanings, both expressed in the currency above:
+                - suggestedPrice is your own market-value estimate based on the item. Never copy
                   a price stated by the seller into suggestedPrice and do not change your estimate
                   merely to agree with the seller.
-                - sellerAskingPrice is the amount the seller explicitly says they want. Extract
-                  natural statements such as "asking 1500", "I want ₹1,500", "price is 1500", or
-                  "sell it for 1500". Return null when the seller has not stated an asking price.
+                - sellerAskingPrice is the amount the seller explicitly says they want, in whatever
+                  currency they stated it in. Extract natural statements such as "asking 1500",
+                  "I want ₹1,500", "asking $200", "price is 1500", or "sell it for £50". Return
+                  null when the seller has not stated an asking price.
 
                 Determine listingType from the seller's intent:
                 - DISPLAY_ONLY when they say "not for sale", "display only", "view only",
@@ -156,6 +161,7 @@ public class OpenAiListingService {
                 "anyOf", List.of(
                         Map.of("type", "number", "minimum", 0),
                         Map.of("type", "null"))));
+        props.put("currency", Map.of("type", "string", "enum", List.of("INR", "USD", "GBP", "EUR", "AUD", "CAD")));
         props.put("city", Map.of("type", "string"));
         props.put("size", Map.of("type", "string"));
         props.put("assistantMessage", Map.of("type", "string"));
@@ -170,6 +176,7 @@ public class OpenAiListingService {
 
     public record ListingAnalysis(boolean hobbyItem, boolean safe, double confidence,
             String moderationReason, String title, String description, String category,
-            String condition, String listingType, double suggestedPrice, Double sellerAskingPrice, String city, String size,
+            String condition, String listingType, double suggestedPrice, Double sellerAskingPrice,
+            String currency, String city, String size,
             String assistantMessage, boolean readyForReview, List<String> missingFields) {}
 }

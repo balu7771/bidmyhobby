@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth";
+import { formatCurrency, CURRENCY_SYMBOLS } from "@/lib/currency";
 
 /** Masks phone numbers and emails for public display.
  *  Counterparty identities remain private until a bid is approved. */
@@ -28,22 +29,6 @@ function maskIdentity(identity: string | null | undefined): string {
     }
     return identity;
 }
-
-/** Formats a price in the given currency.
- *  INR uses Indian lakh formatting (e.g. ₹1,25,000).
- *  GBP and USD use standard Western formatting. */
-function formatCurrency(amount: number | null | undefined, currency: string | null | undefined): string {
-    if (amount == null || isNaN(amount)) return "—";
-    const cur = (currency || "INR").toUpperCase();
-    if (cur === "INR") {
-        const formatted = amount.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-        return `₹${formatted}`;
-    }
-    if (cur === "GBP") return `£${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-const CURRENCY_SYMBOLS: Record<string, string> = { INR: "₹", GBP: "£", USD: "$" };
 
 function biddingFloor(item: any): number {
     const prices = [item?.basePrice, item?.suggestedPrice]

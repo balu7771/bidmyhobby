@@ -74,10 +74,14 @@ public class ListingConversationService {
         if (terminal(c)) throw new IllegalStateException("This conversation can no longer be changed");
         if (message == null || message.isBlank()) throw new IllegalArgumentException("message is required");
         String userMessage = message.trim();
-        Optional<Double> statedPrice = extractSellerAskingPrice(userMessage);
+        Optional<ParsedPrice> statedPrice = extractSellerAskingPrice(userMessage);
         if (statedPrice.isPresent()) {
-            c.setBasePrice(statedPrice.get());
+            c.setBasePrice(statedPrice.get().amount());
             c.setPriceConfirmed(true);
+            if (statedPrice.get().currency() != null) {
+                c.setCurrency(statedPrice.get().currency());
+                c.setCurrencyConfirmed(true);
+            }
         }
         inferListingType(userMessage).ifPresent(c::setListingType);
         append(c, "user", userMessage);
@@ -98,7 +102,7 @@ public class ListingConversationService {
         if (patch.containsKey("city")) c.setCity(clean(patch.get("city")));
         if (patch.containsKey("size")) c.setSize(clean(patch.get("size")));
         if (patch.containsKey("basePrice")) c.setBasePrice(asDouble(patch.get("basePrice")));
-        if (patch.containsKey("currency")) c.setCurrency(clean(patch.get("currency")));
+        if (patch.containsKey("currency")) { c.setCurrency(clean(patch.get("currency"))); c.setCurrencyConfirmed(true); }
         if (patch.containsKey("listingType")) c.setListingType(normalizeListingType(clean(patch.get("listingType"))));
         if (Boolean.TRUE.equals(patch.get("confirmSuggestedPrice"))) {
             c.setBasePrice(c.getSuggestedPrice());
@@ -161,6 +165,14 @@ public class ListingConversationService {
         c.setConditionLabel(a.condition());
         c.setListingType(inferListingType(c.getTranscriptJson())
                 .orElseGet(() -> normalizeListingType(a.listingType())));
+        if (!c.isCurrencyConfirmed() && notBlank(a.currency())) {
+            String detectedCurrency = a.currency().toUpperCase();
+            if (!detectedCurrency.equals(c.getCurrency())) {
+                // The valuation below is stale once its currency changes; re-baseline it.
+                c.setSuggestedPrice(null);
+            }
+            c.setCurrency(detectedCurrency);
+        }
         // Retain the first independent AI valuation. Seller messages must never rewrite it.
         if (c.getSuggestedPrice() == null) {
             c.setSuggestedPrice(a.suggestedPrice());
@@ -244,15 +256,27 @@ public class ListingConversationService {
         if (value instanceof Number n) return n.doubleValue();
         return Double.valueOf(value.toString());
     }
-    private Optional<Double> extractSellerAskingPrice(String message) {
+    private static final Map<String, String> CURRENCY_SYMBOLS = Map.of(
+            "₹", "INR", "rs", "INR", "inr", "INR",
+            "$", "USD", "usd", "USD",
+            "£", "GBP", "gbp", "GBP",
+            "€", "EUR", "eur", "EUR");
+
+    private record ParsedPrice(double amount, String currency) {}
+
+    private Optional<ParsedPrice> extractSellerAskingPrice(String message) {
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
                 "(?i)(?:my\\s+asking\\s+price|asking\\s+price|asking|i\\s+want|price\\s+is|sell(?:\\s+it)?\\s+for)"
-                        + "\\s*(?:is|of|:|-)?\\s*(?:₹|rs\\.?|inr)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)")
+                        + "\\s*(?:is|of|:|-)?\\s*(₹|rs\\.?|inr|\\$|usd|£|gbp|€|eur)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)")
                 .matcher(message);
         if (!matcher.find()) return Optional.empty();
         try {
-            double price = Double.parseDouble(matcher.group(1).replace(",", ""));
-            return price >= 0 ? Optional.of(price) : Optional.empty();
+            double price = Double.parseDouble(matcher.group(2).replace(",", ""));
+            if (price < 0) return Optional.empty();
+            String symbol = matcher.group(1);
+            String currency = symbol == null ? null
+                    : CURRENCY_SYMBOLS.get(symbol.toLowerCase().replace(".", ""));
+            return Optional.of(new ParsedPrice(price, currency));
         } catch (NumberFormatException ignored) {
             return Optional.empty();
         }
