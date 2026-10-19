@@ -28,6 +28,9 @@ delivery remains disabled unless `WHATSAPP_ENABLED=true` is set deliberately.
 - `services/api-gateway`: NGINX routing for the web and backend services
 - `lambdas/image-processor`: Python Lambda for image watermarking and business-card extraction
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the complete system
+architecture, deployment platforms, AWS Lambda pipelines, and component breakdown.
+
 See [docs/REPOSITORY_STRUCTURE.md](docs/REPOSITORY_STRUCTURE.md) for the full
 layout and the decisions used to create this repository.
 
