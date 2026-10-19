@@ -15,6 +15,13 @@ The repository is organized as a polyglot monorepo containing:
 
 ## 2. Architecture Diagram
 
+[![BidMyHobby Architecture Diagram](./images/architecture-diagram.jpg)](./images/architecture-diagram.jpg)
+
+*Figure: Complete System Architecture across Next.js Client, OCI Compute, AWS Lambda & Cloud, and External SaaS (click to view full resolution).*
+
+<details>
+<summary><b>View Mermaid Diagram Source</b></summary>
+
 ```mermaid
 flowchart TB
     subgraph Clients["Client Layer"]
@@ -84,6 +91,8 @@ flowchart TB
     HobbyAI -->|"Send Login OTP"| SendGrid
     HobbyAI -.->|"WhatsApp OTP (Optional)"| Twilio
 ```
+
+</details>
 
 ---
 
