@@ -56,14 +56,35 @@ cp .env.example .env
 Never commit `.env`, cloud credentials, private keys, or generated deployment
 packages. The committed template contains placeholders only.
 
-## Run locally
+### Option A: Native local execution (No Docker required)
+
+Run the full local stack (Frontend, Spring Boot microservices, Dev Gateway) natively:
+
+```bash
+# Start all services concurrently in one terminal
+npm run dev
+# OR using PowerShell directly:
+.\scripts\dev.ps1
+
+# Start each service in a dedicated PowerShell window:
+npm run dev:windows
+# OR:
+.\scripts\dev.ps1 -SeparateWindows
+
+# Stop all running local services and free ports:
+npm run dev:stop
+# OR:
+.\scripts\dev.ps1 -Stop
+```
+
+### Option B: Docker Desktop (Docker Compose)
 
 ```bash
 docker compose -f docker-compose.local.yml --env-file .env config
 docker compose -f docker-compose.local.yml --env-file .env up --build
 ```
 
-Open `http://localhost:8080`. The frontend is also exposed on port `3000`.
+Open `http://localhost:8080`. The frontend is also directly reachable at `http://localhost:3000`.
 
 ## Build and validate
 

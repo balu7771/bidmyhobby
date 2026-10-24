@@ -22,14 +22,29 @@ public class SendGridEmailSender implements EmailSender {
     public SendGridEmailSender(ObjectMapper mapper) { this.mapper = mapper; }
 
     public String sendLoginCode(String email, String code) {
+        if (apiKey == null || apiKey.isBlank() || fromEmail == null || fromEmail.isBlank()) {
+            log.info("\n======================================================================\n"
+                    + "[LOCAL DEV OTP] Login code for {} is: {}\n"
+                    + "======================================================================",
+                    email, code);
+            return "local-dev-mock-id";
+        }
         return sendMessage(email, "Your BidMyHobby login code",
                 "Your BidMyHobby login code is " + code
                         + ". It expires in 10 minutes. Do not share this code.");
     }
 
     public String sendMessage(String email, String subject, String content) {
-        if (apiKey == null || apiKey.isBlank() || fromEmail == null || fromEmail.isBlank())
-            throw new IllegalStateException("Email delivery is not configured");
+        if (apiKey == null || apiKey.isBlank() || fromEmail == null || fromEmail.isBlank()) {
+            log.warn("\n======================================================================\n"
+                    + "[LOCAL DEV EMAIL (SendGrid unconfigured)]\n"
+                    + "To: {}\n"
+                    + "Subject: {}\n"
+                    + "Content: {}\n"
+                    + "======================================================================",
+                    email, subject, content);
+            return "local-dev-mock-id";
+        }
         try {
             Map<String, Object> payload = Map.of(
                     "personalizations", List.of(Map.of("to", List.of(Map.of("email", email)))),
