@@ -1,0 +1,15 @@
+{
+  "name": "bidmyhobby",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BidMyHobby - Local Development Runner",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
+    "dev:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1 -SeparateWindows",
+    "dev:stop": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1 -Stop",
+    "dev:gateway": "node ./scripts/dev-gateway.mjs",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "lint:web": "npm --prefix apps/web run lint"
+  }
+}
