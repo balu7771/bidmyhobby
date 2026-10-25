@@ -11,7 +11,6 @@ AI-powered hobby chat and profile service for the BidMyHobby platform using Open
 
 ## Configuration
 - Port: 8088
-- Eureka registration: hobby-ai-service
 - Database: H2 (file-based)
 - AI Provider: OpenAI Responses API
 
