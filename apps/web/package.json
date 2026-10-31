@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "axios": "^1.7.2",
-    "bidmyhobby": "file:../..",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.395.0",

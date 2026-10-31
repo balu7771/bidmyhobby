@@ -31,6 +31,10 @@ delivery remains disabled unless `WHATSAPP_ENABLED=true` is set deliberately.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the complete system
 architecture, deployment platforms, AWS Lambda pipelines, and component breakdown.
 
+See [docs/GCP_DEPLOYMENT.md](docs/GCP_DEPLOYMENT.md) for the GCP VM setup,
+GitHub Actions deployment workflow, required IAM configuration, and current AWS
+service dependencies.
+
 See [docs/REPOSITORY_STRUCTURE.md](docs/REPOSITORY_STRUCTURE.md) for the full
 layout and the decisions used to create this repository.
 

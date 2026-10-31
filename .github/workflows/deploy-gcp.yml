@@ -1,0 +1,136 @@
+name: Build and deploy to GCP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gcp-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REPOSITORY: ${{ vars.GCP_AR_REPOSITORY }}
+      VM_NAME: ${{ vars.GCP_VM_NAME }}
+      VM_ZONE: ${{ vars.GCP_VM_ZONE }}
+      GCP_DOMAIN: ${{ vars.GCP_DOMAIN }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Validate GCP Compose configuration
+        run: |
+          GCP_DOMAIN=example.invalid \
+          IMAGE_BASE=example.invalid/bidmyhobby \
+          IMAGE_TAG=validation \
+          docker compose --env-file .env.example -f docker-compose.gcp.yml config --quiet
+
+      - name: Check Lambda Python syntax
+        run: python3 -m py_compile lambdas/image-processor/lambda_function.py
+
+      - name: Run backend tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in catalog auction hobby-ai; do
+            (cd "services/$service" && ./mvnw --batch-mode clean verify)
+          done
+
+      - name: Build frontend
+        run: npm ci && npm run build
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: /api
+
+      - name: Build deployable backend jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in catalog auction hobby-ai; do
+            (cd "services/$service" && ./mvnw --batch-mode -DskipTests package)
+          done
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Authenticate Docker to Artifact Registry
+        run: |
+          set -euo pipefail
+          for name in PROJECT_ID REGION REPOSITORY VM_NAME VM_ZONE GCP_DOMAIN; do
+            if [[ -z "${!name}" ]]; then echo "Missing GitHub repository variable: $name" >&2; exit 1; fi
+          done
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push versioned images
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image_base="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/bidmyhobby"
+          docker build -t "${image_base}:${IMAGE_TAG}-catalog" ./services/catalog
+          docker build -t "${image_base}:${IMAGE_TAG}-auction" ./services/auction
+          docker build -t "${image_base}:${IMAGE_TAG}-hobby-ai" ./services/hobby-ai
+          docker build -t "${image_base}:${IMAGE_TAG}-frontend" ./apps/web
+          docker push "${image_base}:${IMAGE_TAG}-catalog"
+          docker push "${image_base}:${IMAGE_TAG}-auction"
+          docker push "${image_base}:${IMAGE_TAG}-hobby-ai"
+          docker push "${image_base}:${IMAGE_TAG}-frontend"
+          echo "IMAGE_BASE=${image_base}" >> "$GITHUB_ENV"
+
+      - name: Copy runtime configuration to VM
+        run: |
+          gcloud compute scp docker-compose.gcp.yml services/api-gateway/nginx.conf deployment/gcp/Caddyfile \
+            "${VM_NAME}:/tmp/" --zone "${VM_ZONE}" --tunnel-through-iap
+
+      - name: Deploy and smoke-check
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${VM_NAME}" --zone "${VM_ZONE}" --tunnel-through-iap --command \
+            "sudo install -d -m 0755 /opt/bidmyhobby/services/api-gateway /opt/bidmyhobby/deployment/gcp && \
+             sudo install -m 0644 /tmp/docker-compose.gcp.yml /opt/bidmyhobby/docker-compose.gcp.yml && \
+             sudo install -m 0644 /tmp/nginx.conf /opt/bidmyhobby/services/api-gateway/nginx.conf && \
+             sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
+             sudo docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
+
+      - name: Verify public HTTPS endpoint
+        run: curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused "https://${GCP_DOMAIN}/" -o /dev/null

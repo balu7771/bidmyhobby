@@ -1,0 +1,149 @@
+x-app-common: &app-common
+  restart: unless-stopped
+  networks:
+    - bidmyhobby-network
+
+x-java-healthcheck: &java-healthcheck
+  interval: 20s
+  timeout: 5s
+  retries: 12
+  start_period: 240s
+
+services:
+  # TLS terminates at Caddy; application routing remains in the existing NGINX gateway.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      - GCP_DOMAIN=${GCP_DOMAIN:?Set GCP_DOMAIN to a DNS name pointing at the VM}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deployment/gcp/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api-gateway
+    networks:
+      - bidmyhobby-network
+
+  api-gateway:
+    image: nginx:alpine
+    restart: unless-stopped
+    expose:
+      - "80"
+    volumes:
+      - ./services/api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      auction-service:
+        condition: service_healthy
+      hobby-ai-service:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - bidmyhobby-network
+
+  catalog-service:
+    <<: *app-common
+    image: ${IMAGE_BASE:?Set IMAGE_BASE}:${IMAGE_TAG:?Set IMAGE_TAG}-catalog
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+      AWS_LAMBDA_IMAGE_PROCESSOR: ${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-30}
+      CATALOG_SERVICE_URL: http://catalog-service:8081
+    expose:
+      - "8081"
+    volumes:
+      - catalog-data:/app/data
+    entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+
+  auction-service:
+    <<: *app-common
+    image: ${IMAGE_BASE:?Set IMAGE_BASE}:${IMAGE_TAG:?Set IMAGE_TAG}-auction
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
+      CATALOG_SERVICE_URL: http://catalog-service:8081
+    expose:
+      - "8082"
+    entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+
+  hobby-ai-service:
+    <<: *app-common
+    image: ${IMAGE_BASE:?Set IMAGE_BASE}:${IMAGE_TAG:?Set IMAGE_TAG}-hobby-ai
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
+      AWS_S3_AI_BUCKET_NAME: ${AWS_S3_AI_BUCKET_NAME:-bidmyhobby-ai-profiles}
+      AWS_S3_AI_IMAGES_PREFIX: ${AWS_S3_AI_IMAGES_PREFIX:-images/}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-+14155238886}
+      SITE_URL: https://${GCP_DOMAIN:?Set GCP_DOMAIN}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:?Set SENDGRID_API_KEY}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:?Set SENDGRID_FROM_EMAIL}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      APP_SITE_URL: https://${GCP_DOMAIN:?Set GCP_DOMAIN}
+      AUTH_COOKIE_SECURE: "true"
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+    expose:
+      - "8088"
+    volumes:
+      - hobby-ai-data:/app/data
+      - hobby-ai-images:/app/images
+    entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "/app/app.jar"]
+    healthcheck:
+      <<: *java-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:8088/api/profiles?page=0&size=1"]
+
+  frontend:
+    image: ${IMAGE_BASE:?Set IMAGE_BASE}:${IMAGE_TAG:?Set IMAGE_TAG}-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: /api
+    expose:
+      - "3000"
+    networks:
+      - bidmyhobby-network
+
+networks:
+  bidmyhobby-network:
+    driver: bridge
+
+volumes:
+  catalog-data:
+  hobby-ai-data:
+  hobby-ai-images:
+  caddy-data:
+  caddy-config:

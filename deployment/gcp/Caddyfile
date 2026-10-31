@@ -1,0 +1,4 @@
+{$GCP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api-gateway:80
+}

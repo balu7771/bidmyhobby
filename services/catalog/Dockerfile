@@ -1,6 +1,9 @@
 FROM eclipse-temurin:21-jre
 
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY target/*.jar app.jar
 EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
