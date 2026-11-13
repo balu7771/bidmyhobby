@@ -130,7 +130,7 @@ jobs:
              sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
              sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
              sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
-             sudo docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
 
       - name: Verify public HTTPS endpoint
         run: curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused "https://${GCP_DOMAIN}/" -o /dev/null
