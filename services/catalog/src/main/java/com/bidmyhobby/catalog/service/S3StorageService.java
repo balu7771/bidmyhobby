@@ -39,6 +39,9 @@ public class S3StorageService {
     @Value("${aws.region:us-east-1}")
     private String region;
 
+    @Value("${aws.s3.health-check.enabled:true}")
+    private boolean healthCheckEnabled;
+
     private final java.util.Map<String, Item> itemCache = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Map<String, java.time.Instant> itemLastModifiedCache = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -50,6 +53,11 @@ public class S3StorageService {
 
     @PostConstruct
     public void init() {
+        if (!healthCheckEnabled) {
+            logger.info("S3 startup health check is disabled");
+            return;
+        }
+
         logger.info("═══════════════════════════════════════════════════════════════");
         logger.info("✅ S3 Storage Service Initialized");
         logger.info("   Bucket Name: {}", bucketName);
