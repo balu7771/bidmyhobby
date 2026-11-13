@@ -41,10 +41,7 @@ public class SimpleProfileService {
             
             if (profiles != null && !profiles.isEmpty()) {
                 profiles.sort(Comparator.comparing(Profile::getId));
-                if (maxProfiles > 0 && profiles.size() > maxProfiles) {
-                    profiles = profiles.subList(0, maxProfiles);
-                }
-                // Update image URLs to S3 paths
+                // Update image URLs to S3 paths if relative
                 profiles.forEach(profile -> {
                     if (profile.getImageUrl() != null && !profile.getImageUrl().startsWith("http")) {
                         profile.setImageUrl(s3Service.getImageUrl(profile.getImageUrl()));
@@ -52,7 +49,7 @@ public class SimpleProfileService {
                 });
                 
                 profileRepository.saveAll(profiles);
-                System.out.println("Loaded " + profiles.size() + " profiles from S3");
+                System.out.println("Loaded " + profiles.size() + " profiles into database");
             } else {
                 System.out.println("No profiles found in the S3 profiles file; keeping existing profiles");
             }

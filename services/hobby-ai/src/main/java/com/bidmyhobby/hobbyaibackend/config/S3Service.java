@@ -29,11 +29,33 @@ public class S3Service {
     }
 
     public InputStream getProfilesJson() throws IOException {
-        GetObjectRequest request = GetObjectRequest.builder()
-            .bucket(bucketName)
-            .key(profilesKey)
-            .build();
-        return s3Client.getObject(request);
+        try {
+            if (bucketName != null && !bucketName.isBlank() && !bucketName.contains("dummy")) {
+                GetObjectRequest request = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(profilesKey)
+                    .build();
+                return s3Client.getObject(request);
+            }
+        } catch (Exception e) {
+            System.out.println("⚠️ Could not load profiles from S3 (" + e.getMessage() + "), falling back to bundled profiles.json");
+        }
+
+        // Fallback: check classpath for bundled profiles.json
+        InputStream cpStream = getClass().getResourceAsStream("/" + profilesKey);
+        if (cpStream != null) {
+            System.out.println("✅ Loaded profiles from bundled classpath: /" + profilesKey);
+            return cpStream;
+        }
+
+        // Fallback: check local data directory
+        java.io.File localFile = new java.io.File("data/" + profilesKey);
+        if (localFile.exists()) {
+            System.out.println("✅ Loaded profiles from local file: " + localFile.getAbsolutePath());
+            return new java.io.FileInputStream(localFile);
+        }
+
+        throw new IOException("profiles.json could not be found in S3, classpath, or data directory");
     }
 
     public String getImageUrl(String fileName) {

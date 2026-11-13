@@ -19,11 +19,15 @@ const ETHNICITY_COLORS: Record<string, string> = {
     Hispanic: "bg-pink-500/20 text-pink-300 border-pink-500/20",
     Black: "bg-purple-500/20 text-purple-300 border-purple-500/20",
     White: "bg-sky-500/20 text-sky-300 border-sky-500/20",
+    "AI / Synthetic": "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/20",
+    AI: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/20",
 };
 
 function ProfileCard({ profile, index, onChat }: { profile: any; index: number; onChat: (p: any) => void }) {
     const imageUrl = profile.imageUrl
-        ? `${API_URL}/ai/images/${profile.imageUrl}`
+        ? (profile.imageUrl.startsWith("http://") || profile.imageUrl.startsWith("https://")
+            ? profile.imageUrl
+            : `${API_URL}/ai/images/${profile.imageUrl}`)
         : null;
 
     const ethnicityClass = ETHNICITY_COLORS[profile.ethnicity] || "bg-slate-500/20 text-slate-300 border-slate-500/20";

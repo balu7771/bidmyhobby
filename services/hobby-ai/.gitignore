@@ -33,4 +33,5 @@ build/
 .vscode/
 
 ### Application specific ###
-profiles.json
+/profiles.json
+!src/main/resources/profiles.json

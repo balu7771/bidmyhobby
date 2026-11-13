@@ -143,7 +143,9 @@ export function AIChatModal({ profile, onClose }: AIChatModalProps) {
                         <div className="w-10 h-10 rounded-full overflow-hidden border border-indigo-500/50">
                             {profile.imageUrl ? (
                                 <img 
-                                    src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/ai/images/${profile.imageUrl}`} 
+                                    src={profile.imageUrl.startsWith("http://") || profile.imageUrl.startsWith("https://") 
+                                        ? profile.imageUrl 
+                                        : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"}/ai/images/${profile.imageUrl}`} 
                                     alt={profile.name} 
                                     className="w-full h-full object-cover"
                                 />

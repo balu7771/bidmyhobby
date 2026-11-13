@@ -1,0 +1,145 @@
+[
+  {
+    "id": "profile-01",
+    "firstName": "Sophia",
+    "lastName": "Chen",
+    "age": 24,
+    "ethnicity": "Asian",
+    "gender": "FEMALE",
+    "bio": "Pottery artist exploring hand-thrown functional stoneware and Japanese wabi-sabi aesthetics. I collect vintage pottery tools, glazes, and artisanal tea ware.",
+    "imageUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Ceramic Pottery"
+  },
+  {
+    "id": "profile-02",
+    "firstName": "Elena",
+    "lastName": "Rostova",
+    "age": 29,
+    "ethnicity": "White",
+    "gender": "FEMALE",
+    "bio": "Capturing deep-sky nebulae and lunar landscapes with equatorial mounts and dedicated astronomy cameras. Always trading telescope eyepieces, filters, and mounts.",
+    "imageUrl": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Astrophotography"
+  },
+  {
+    "id": "profile-03",
+    "firstName": "Amara",
+    "lastName": "Okafor",
+    "age": 32,
+    "ethnicity": "Black",
+    "gender": "FEMALE",
+    "bio": "Audiophile and vinyl crate-digger specializing in 70s Afrobeat, rare jazz, and vintage funk pressings. Looking for original pressings and high-end turntable cartridges.",
+    "imageUrl": "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Vintage Vinyl Collecting"
+  },
+  {
+    "id": "profile-04",
+    "firstName": "Isabella",
+    "lastName": "Morales",
+    "age": 27,
+    "ethnicity": "Hispanic",
+    "gender": "FEMALE",
+    "bio": "Passionate micro-batch home coffee roaster exploring single-origin Ethiopian and Colombian beans. Collects manual lever espresso machines and precision flat-burr grinders.",
+    "imageUrl": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Specialty Coffee Roasting"
+  },
+  {
+    "id": "profile-05",
+    "firstName": "Priya",
+    "lastName": "Sharma",
+    "age": 35,
+    "ethnicity": "Asian",
+    "gender": "FEMALE",
+    "bio": "Bonsai enthusiast and rare tropical plant collector. Specializing in Ficus shaping, Japanese maples, and automated micro-climate terrarium setups.",
+    "imageUrl": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Urban Gardening & Bonsai"
+  },
+  {
+    "id": "profile-06",
+    "firstName": "Marcus",
+    "lastName": "Vance",
+    "age": 26,
+    "ethnicity": "Black",
+    "gender": "MALE",
+    "bio": "Award-winning painter of grimdark sci-fi and fantasy tabletop miniatures. Collects rare out-of-print sculpts, dual-action airbrushes, and artisan scenic flocking.",
+    "imageUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Miniature Painting & Warhammer"
+  },
+  {
+    "id": "profile-07",
+    "firstName": "Liam",
+    "lastName": "O'Connor",
+    "age": 38,
+    "ethnicity": "White",
+    "gender": "MALE",
+    "bio": "Horology enthusiast dedicated to repairing and restoring mechanical timepieces from the 1960s and 70s. Searching for NOS watch dials, hands, and vintage balance wheels.",
+    "imageUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Vintage Watch Restoration"
+  },
+  {
+    "id": "profile-08",
+    "firstName": "Kenji",
+    "lastName": "Takahashi",
+    "age": 23,
+    "ethnicity": "Asian",
+    "gender": "MALE",
+    "bio": "Builder and pilot of custom 5-inch carbon-fiber racing quads. Constantly tuning PID controllers, brushless motors, and analog/digital video transmitters.",
+    "imageUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "FPV Drone Racing & Robotics"
+  },
+  {
+    "id": "profile-09",
+    "firstName": "David",
+    "lastName": "Kim",
+    "age": 31,
+    "ethnicity": "Asian",
+    "gender": "MALE",
+    "bio": "Custom mechanical keyboard artisan. Specializing in brass-weight cases, hand-lubed linear switches, custom PCBs, and limited-run GMK dye-sub keycaps.",
+    "imageUrl": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Custom Mechanical Keyboards"
+  },
+  {
+    "id": "profile-10",
+    "firstName": "Mateo",
+    "lastName": "Fernandez",
+    "age": 36,
+    "ethnicity": "Hispanic",
+    "gender": "MALE",
+    "bio": "Luthier and fine woodworker crafting custom electric and acoustic guitars with figured maple and walnut. Looking for rare tonewood blanks and antique Japanese hand planes.",
+    "imageUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Woodworking & Guitars"
+  },
+  {
+    "id": "profile-11",
+    "firstName": "Aria",
+    "lastName": "Spark",
+    "age": 25,
+    "ethnicity": "AI / Synthetic",
+    "gender": "OTHER",
+    "bio": "AI creative visual arts companion. Trained on generative composition, digital color theory, brush techniques, and multi-era art styling. Ask me about your next creative project!",
+    "imageUrl": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Generative Art & Visual Design"
+  },
+  {
+    "id": "profile-12",
+    "firstName": "Atlas",
+    "lastName": "Prime",
+    "age": 30,
+    "ethnicity": "AI / Synthetic",
+    "gender": "OTHER",
+    "bio": "Autonomous robotics and hardware design assistant. Ask me anything about microcontrollers, PCB routing, 3D printing slicing configurations, and drone telemetry.",
+    "imageUrl": "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Robotics, CAD & 3D Printing"
+  },
+  {
+    "id": "profile-13",
+    "firstName": "Chronos",
+    "lastName": "Archivist",
+    "age": 40,
+    "ethnicity": "AI / Synthetic",
+    "gender": "OTHER",
+    "bio": "AI horology and antique curator. Specialized in historical valuation, provenance research, vintage auction archives, and hallmark verification across collectibles.",
+    "imageUrl": "https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=500&auto=format&fit=crop&q=80",
+    "mainHobby": "Antiques & Provenance Research"
+  }
+]
