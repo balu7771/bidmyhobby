@@ -196,7 +196,7 @@ export function Navigation() {
                         {userEmail ? (
                             <>
                                 <div className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
-                                    <MessageCircle className="w-5 h-5 text-emerald-400" />
+                                    <Mail className="w-5 h-5 text-emerald-400" />
                                     <div>
                                         <p className="text-xs text-emerald-400 font-semibold">Logged in</p>
                                         <p className="text-white text-sm font-mono">{maskForNav(userEmail)}</p>
@@ -252,7 +252,7 @@ export function Navigation() {
                     ) : (
                         <Link href={`/login?returnTo=${encodeURIComponent(pathname || "/")}`}
                             className="flex flex-col items-center gap-1 p-2 rounded-xl text-[10px] font-medium text-emerald-500 min-w-[60px]">
-                            <MessageCircle className="w-5 h-5 mb-0.5" />
+                            <Mail className="w-5 h-5 mb-0.5" />
                             Login
                         </Link>
                     )}

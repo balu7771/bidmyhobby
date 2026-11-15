@@ -246,8 +246,15 @@ function HomeContent() {
     };
 
     useEffect(() => {
-        setUserEmail(localStorage.getItem("userEmail"));
+        const syncUser = () => setUserEmail(localStorage.getItem("userEmail"));
+        syncUser();
         loadItems();
+        window.addEventListener("userLogin", syncUser);
+        window.addEventListener("userLogout", syncUser);
+        return () => {
+            window.removeEventListener("userLogin", syncUser);
+            window.removeEventListener("userLogout", syncUser);
+        };
     }, []);
 
     useEffect(() => {
@@ -548,7 +555,7 @@ function HomeContent() {
             </section>
 
             {/* Items Section */}
-            {displayedItems.length > 0 && (
+            {displayedItems.length > 0 ? (
                 <section id="recently-uploaded" className="px-4 py-8 md:py-12 max-w-7xl mx-auto w-full border-t border-white/5">
                     <div className="flex items-center justify-between mb-10">
                         <div>
@@ -583,20 +590,41 @@ function HomeContent() {
                             </div>
                         ))}
                     </div>
-
-                    {showMyItems && displayedItems.length === 0 && (
-                        <div className="text-center py-16 text-slate-500">
-                            <Upload className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                            <p className="text-lg mb-2">No uploads yet</p>
-                            <Link href="/upload" className="text-blue-400 hover:text-blue-300 transition-colors text-sm">Upload your first hobby item →</Link>
-                        </div>
-                    )}
                 </section>
-            )}
+            ) : !isFetchingItems && !fetchError ? (
+                <section id="recently-uploaded" className="px-4 py-12 max-w-7xl mx-auto w-full border-t border-white/5">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 className="text-3xl font-bold flex items-center gap-3">
+                                <Box className="text-emerald-500 w-8 h-8" />
+                                {showMyItems ? "My Uploads" : "Recently Uploaded"}
+                            </h2>
+                        </div>
+                        {showMyItems && (
+                            <Link href="/" className="text-sm text-slate-400 hover:text-white transition-colors">← All items</Link>
+                        )}
+                    </div>
+                    <div className="text-center py-16 text-slate-500 glass-panel rounded-2xl">
+                        <Upload className="w-12 h-12 mx-auto mb-4 opacity-30 text-emerald-400" />
+                        <p className="text-lg font-semibold text-slate-300 mb-2">
+                            {showMyItems ? "No uploads yet" : "No hobby items listed yet"}
+                        </p>
+                        <p className="text-sm text-slate-400 mb-6">
+                            {showMyItems
+                                ? "Items you create and publish will appear here."
+                                : "Be the first collector or enthusiast to share your creation."}
+                        </p>
+                        <Link href="/upload" className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/30">
+                            <Upload className="w-4 h-4" />
+                            Upload your first hobby item
+                        </Link>
+                    </div>
+                </section>
+            ) : null}
 
             {/* Loading State */}
             {isFetchingItems && (
-                <section id="recently-uploaded" className="px-4 py-12 max-w-7xl mx-auto w-full border-t border-white/5">
+                <section className="px-4 py-12 max-w-7xl mx-auto w-full border-t border-white/5">
                     <div className="flex items-center gap-3 mb-8">
                         <Box className="text-emerald-500 w-8 h-8" />
                         <h2 className="text-3xl font-bold">Recently Uploaded</h2>
