@@ -121,6 +121,7 @@ jobs:
         shell: bash
         env:
           IMAGE_TAG: ${{ github.sha }}
+          GCP_DOMAIN: ${{ env.GCP_DOMAIN }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
@@ -131,9 +132,24 @@ jobs:
              sudo install -m 0644 /tmp/docker-compose.gcp.yml /opt/bidmyhobby/docker-compose.gcp.yml && \
              sudo install -m 0644 /tmp/nginx.conf /opt/bidmyhobby/services/api-gateway/nginx.conf && \
              sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
+             (grep -q '^GCP_DOMAIN=' /opt/bidmyhobby/.env && sudo sed -i 's|^GCP_DOMAIN=.*|GCP_DOMAIN=${GCP_DOMAIN}|' /opt/bidmyhobby/.env || echo 'GCP_DOMAIN=${GCP_DOMAIN}' | sudo tee -a /opt/bidmyhobby/.env) && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml restart caddy && \
+             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
 
       - name: Verify public HTTPS endpoint
-        run: curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused "https://${GCP_DOMAIN}/" -o /dev/null
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Verifying public HTTPS endpoint for https://${GCP_DOMAIN}/..."
+          for i in {1..24}; do
+            if curl --fail --silent --show-error "https://${GCP_DOMAIN}/" -o /dev/null; then
+              echo "Public HTTPS endpoint https://${GCP_DOMAIN}/ verified successfully!"
+              exit 0
+            fi
+            echo "Waiting for SSL certificate and service readiness (attempt $i/24)..."
+            sleep 10
+          done
+          echo "Failed to verify https://${GCP_DOMAIN}/ within timeout."
+          exit 1
