@@ -43,10 +43,24 @@ services:
         condition: service_healthy
       hobby-ai-service:
         condition: service_healthy
+      image-processor:
+        condition: service_healthy
       frontend:
         condition: service_started
     networks:
       - bidmyhobby-network
+
+  image-processor:
+    <<: *app-common
+    image: ${IMAGE_BASE:?Set IMAGE_BASE}:${IMAGE_TAG:?Set IMAGE_TAG}-image-processor
+    expose:
+      - "8080"
+    healthcheck:
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
 
   catalog-service:
     <<: *app-common
@@ -54,9 +68,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
-      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      IMAGE_PROCESSOR_URL: http://image-processor:8080/process
+      GCP_STORAGE_BUCKET: ${GCP_STORAGE_BUCKET:-}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-bidmyhobby-catalog}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
       AWS_LAMBDA_IMAGE_PROCESSOR: ${AWS_LAMBDA_IMAGE_PROCESSOR:-bidmyhobby-image-processor}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
@@ -69,6 +86,9 @@ services:
     volumes:
       - catalog-data:/app/data
     entrypoint: ["java", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]
+    depends_on:
+      image-processor:
+        condition: service_healthy
     healthcheck:
       <<: *java-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
@@ -79,9 +99,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
-      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      GCP_STORAGE_BUCKET: ${GCP_STORAGE_BUCKET:-}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-bidmyhobby-catalog}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
       CATALOG_SERVICE_URL: http://catalog-service:8081
@@ -98,11 +120,13 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       JAVA_TOOL_OPTIONS: -Xms128m -Xmx768m
-      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:?Set AWS_S3_BUCKET_NAME}
+      GCP_STORAGE_BUCKET: ${GCP_STORAGE_BUCKET:-}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-bidmyhobby-catalog}
       AWS_S3_AI_BUCKET_NAME: ${AWS_S3_AI_BUCKET_NAME:-bidmyhobby-ai-profiles}
       AWS_S3_AI_IMAGES_PREFIX: ${AWS_S3_AI_IMAGES_PREFIX:-images/}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}

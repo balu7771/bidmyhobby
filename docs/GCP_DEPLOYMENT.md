@@ -46,26 +46,22 @@ used. For a short trial, stop the VM when you are not using it; its disk and
 reserved external IP can still incur charges. Check the current estimate in
 Google Cloud's pricing calculator for the selected region before provisioning.
 
-## Keep these AWS integrations for the first GCP trial
+## GCP Storage and Image Processing
 
-The application is not cloud-neutral today. Catalog and hobby-ai use AWS S3,
-catalog calls the AWS Lambda image processor, and auction stores bids in S3.
-This plan leaves those code paths and the Lambda itself in AWS and connects to
-them from the GCP VM using the existing AWS SDK configuration. The AWS identity
-must allow only the S3 buckets and Lambda function the app needs. These AWS
-services continue to incur AWS charges, separately from the GCP credit.
+The application natively supports Google Cloud Platform:
+- **Image Processing**: A Python microservice runs directly on the GCP VM via Docker Compose (`http://image-processor:8080/process`) using Google Cloud Vision API and Pillow.
+- **Storage**: Catalog images, metadata, and bids can be stored directly in a Google Cloud Storage (GCS) bucket (`GCP_STORAGE_BUCKET`), authenticated automatically via the Compute Engine VM's attached service account.
 
 The Compose environment file is on the VM only. Create it with root-only
 permissions (`sudo install -m 600 /dev/null /opt/bidmyhobby/.env`, then edit it
 with `sudoedit /opt/bidmyhobby/.env`). Supply the production values for:
 
 - `GCP_DOMAIN` — DNS name from step 4.
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`,
-  `AWS_S3_BUCKET_NAME`, and `AWS_S3_AI_BUCKET_NAME`.
-- `AWS_LAMBDA_IMAGE_PROCESSOR` — deployed AWS Lambda function name.
+- `GCP_STORAGE_BUCKET` — Google Cloud Storage bucket name (e.g. `bidmyhobby-storage`).
+- `IMAGE_PROCESSOR_URL` — `http://image-processor:8080/process`
 - `AUTH_TOKEN_SECRET` — a random secret of at least 32 characters.
 - `OPENAI_API_KEY`, `SENDGRID_API_KEY`, and `SENDGRID_FROM_EMAIL`.
-- Optional Twilio values, `ADMIN_EMAILS`, and `WHATSAPP_ENABLED` as needed.
+- Optional AWS fallback credentials if using AWS S3/Lambda.
 
 Do not put this file or these values in GitHub. `GCP_DOMAIN` and the non-secret
 image/project settings below are GitHub repository variables; cloud and app

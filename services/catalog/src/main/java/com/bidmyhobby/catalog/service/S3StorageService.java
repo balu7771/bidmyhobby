@@ -3,18 +3,29 @@ package com.bidmyhobby.catalog.service;
 import com.bidmyhobby.catalog.model.Item;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.BlobInfo;
+import com.google.cloud.storage.Storage;
+import com.google.api.gax.paging.Page;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +36,11 @@ public class S3StorageService {
     private static final Logger logger = LoggerFactory.getLogger(S3StorageService.class);
 
     private final S3Client s3Client;
+    private final Storage gcsClient;
     private final ObjectMapper objectMapper;
+
+    @Value("${gcp.storage.bucket.name:${GCP_STORAGE_BUCKET:${GCS_BUCKET_NAME:}}}")
+    private String gcsBucketName;
 
     @Value("${aws.s3.bucket.name:bidmyhobby-catalog}")
     private String bucketName;
@@ -36,7 +51,7 @@ public class S3StorageService {
     @Value("${aws.s3.bucket.images-prefix:images/}")
     private String imagesPrefix;
 
-    @Value("${aws.region:us-east-1}")
+    @Value("${aws.region:ap-south-1}")
     private String region;
 
     @Value("${aws.s3.health-check.enabled:true}")
@@ -45,102 +60,117 @@ public class S3StorageService {
     private final java.util.Map<String, Item> itemCache = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Map<String, java.time.Instant> itemLastModifiedCache = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public S3StorageService(S3Client s3Client) {
+    public S3StorageService(@Autowired(required = false) S3Client s3Client,
+                            @Autowired(required = false) Storage gcsClient) {
         this.s3Client = s3Client;
+        this.gcsClient = gcsClient;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
     }
 
+    public boolean isGcsActive() {
+        return gcsClient != null && gcsBucketName != null && !gcsBucketName.isBlank();
+    }
+
+    public boolean isS3Active() {
+        return s3Client != null && bucketName != null && !bucketName.isBlank() && !bucketName.contains("dummy");
+    }
+
     @PostConstruct
     public void init() {
-        if (!healthCheckEnabled) {
-            logger.info("S3 startup health check is disabled");
-            return;
-        }
-
         logger.info("═══════════════════════════════════════════════════════════════");
-        logger.info("✅ S3 Storage Service Initialized");
-        logger.info("   Bucket Name: {}", bucketName);
-        logger.info("   Region: {}", region);
+        if (isGcsActive()) {
+            logger.info("✅ Storage Provider: Google Cloud Storage (GCS)");
+            logger.info("   Bucket Name: {}", gcsBucketName);
+        } else if (isS3Active()) {
+            logger.info("✅ Storage Provider: AWS S3");
+            logger.info("   Bucket Name: {}", bucketName);
+            logger.info("   Region: {}", region);
+        } else {
+            logger.info("✅ Storage Provider: Local Disk Storage");
+            logger.info("   Directory: data/storage/");
+        }
         logger.info("   Metadata Prefix: {}", metadataPrefix);
         logger.info("   Images Prefix: {}", imagesPrefix);
         logger.info("═══════════════════════════════════════════════════════════════");
 
-        // Health check: Run in background thread to avoid blocking startup
+        if (!healthCheckEnabled) return;
+
         new Thread(() -> {
             try {
-                Thread.sleep(2000); // Wait 2 sec for S3 client to initialize
-
-                ListObjectsV2Request healthCheckRequest = ListObjectsV2Request.builder()
-                        .bucket(bucketName)
-                        .maxKeys(1)
-                        .build();
-
-                ListObjectsV2Response response = s3Client.listObjectsV2(healthCheckRequest);
-
-                logger.info("✅ S3 Health Check PASSED");
-                logger.info("   Successfully listed objects in bucket: {}", bucketName);
-                logger.info("   Total objects in bucket: ~{}", response.keyCount());
-            } catch (NoSuchBucketException e) {
-                logger.error("❌ S3 Health Check FAILED - Bucket not found!");
-                logger.error("   Bucket Name: {}", bucketName);
-                logger.error("   Region: {}", region);
-                logger.error("   Error: Bucket does not exist or is in a different region/account");
-                logger.error("   Action: Verify AWS_S3_BUCKET_NAME and AWS_DEFAULT_REGION");
-            } catch (S3Exception e) {
-                logger.error("❌ S3 Health Check FAILED - S3 Error");
-                logger.error("   Bucket Name: {}", bucketName);
-                logger.error("   Region: {}", region);
-                logger.error("   Error Code: {}", e.awsErrorDetails() != null ? e.awsErrorDetails().errorCode() : "Unknown");
-                logger.error("   Action: Check S3 credentials and bucket access");
-            } catch (InterruptedException e) {
-                logger.warn("⚠️ S3 Health Check interrupted");
+                Thread.sleep(2000);
+                if (isGcsActive()) {
+                    Page<Blob> page = gcsClient.list(gcsBucketName, Storage.BlobListOption.pageSize(1));
+                    logger.info("✅ GCS Health Check PASSED for bucket: {}", gcsBucketName);
+                } else if (isS3Active()) {
+                    ListObjectsV2Request healthCheckRequest = ListObjectsV2Request.builder()
+                            .bucket(bucketName)
+                            .maxKeys(1)
+                            .build();
+                    ListObjectsV2Response response = s3Client.listObjectsV2(healthCheckRequest);
+                    logger.info("✅ S3 Health Check PASSED - Total objects: ~{}", response.keyCount());
+                } else {
+                    Path localDir = Paths.get("data", "storage");
+                    Files.createDirectories(localDir);
+                    logger.info("✅ Local Disk Storage directory verified: {}", localDir.toAbsolutePath());
+                }
             } catch (Exception e) {
-                logger.warn("⚠️ S3 Health Check failed (non-blocking): {}", e.getMessage());
+                logger.warn("⚠️ Storage Health Check non-blocking notice: {}", e.getMessage());
             }
-        }, "S3-HealthCheck-Thread").start();
+        }, "Storage-HealthCheck-Thread").start();
     }
 
     public String uploadFile(MultipartFile file, byte[] processedImageBytes, String contentType) throws IOException {
         String filename = imagesPrefix + System.currentTimeMillis() + "-" + file.getOriginalFilename();
-
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(filename)
-                .contentType(contentType != null ? contentType : file.getContentType())
-                .build();
-
-        if (processedImageBytes != null) {
-            s3Client.putObject(request, RequestBody.fromBytes(processedImageBytes));
-        } else {
-            s3Client.putObject(request, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-        }
-
-        return filename;
+        byte[] content = processedImageBytes != null ? processedImageBytes : file.getBytes();
+        String ct = contentType != null ? contentType : (file.getContentType() != null ? file.getContentType() : "image/jpeg");
+        return uploadFile(filename, content, ct);
     }
 
     public String uploadFile(String key, byte[] content, String contentType) {
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .contentType(contentType)
-                .build();
-
-        s3Client.putObject(request, RequestBody.fromBytes(content));
-        return key;
+        String ct = contentType != null ? contentType : "image/jpeg";
+        if (isGcsActive()) {
+            try {
+                BlobId blobId = BlobId.of(gcsBucketName, key);
+                BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType(ct).build();
+                gcsClient.create(blobInfo, content);
+                logger.info("✅ Uploaded file to GCS: gs://{}/{}", gcsBucketName, key);
+                return key;
+            } catch (Exception e) {
+                logger.error("❌ GCS upload failed for {}: {}", key, e.getMessage(), e);
+                throw new RuntimeException("GCS upload failed: " + e.getMessage(), e);
+            }
+        } else if (isS3Active()) {
+            try {
+                PutObjectRequest request = PutObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(key)
+                        .contentType(ct)
+                        .build();
+                s3Client.putObject(request, RequestBody.fromBytes(content));
+                logger.info("✅ Uploaded file to S3: s3://{}/{}", bucketName, key);
+                return key;
+            } catch (Exception e) {
+                logger.error("❌ S3 upload failed for {}: {}", key, e.getMessage(), e);
+                throw new RuntimeException("S3 upload failed: " + e.getMessage(), e);
+            }
+        } else {
+            try {
+                Path target = Paths.get("data", "storage", key);
+                Files.createDirectories(target.getParent());
+                Files.write(target, content);
+                logger.info("✅ Saved file to local storage: {}", target);
+                return key;
+            } catch (IOException e) {
+                logger.error("❌ Local storage upload failed for {}: {}", key, e.getMessage(), e);
+                throw new RuntimeException("Local storage failed: " + e.getMessage(), e);
+            }
+        }
     }
 
     public String uploadImage(byte[] processedImageData, String folder) {
         String filename = (folder != null ? folder : imagesPrefix) + "/" + System.currentTimeMillis() + ".jpg";
-
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(filename)
-                .contentType("image/jpeg")
-                .build();
-
-        s3Client.putObject(request, RequestBody.fromBytes(processedImageData));
-
+        uploadFile(filename, processedImageData, "image/jpeg");
         return generateImageUrl(filename);
     }
 
@@ -152,152 +182,188 @@ public class S3StorageService {
         String metadataKey = metadataPrefix + "items/" + item.getItemId() + ".json";
         String jsonContent = objectMapper.writeValueAsString(item);
 
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(metadataKey)
-                .contentType("application/json")
-                .build();
+        if (isGcsActive()) {
+            try {
+                BlobId blobId = BlobId.of(gcsBucketName, metadataKey);
+                BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("application/json").build();
+                gcsClient.create(blobInfo, jsonContent.getBytes(StandardCharsets.UTF_8));
+                logger.info("✅ Saved item to GCS: gs://{}/{}", gcsBucketName, metadataKey);
+            } catch (Exception e) {
+                logger.error("❌ Failed saving item to GCS: {}", e.getMessage(), e);
+                throw new IOException("GCS saveItem failed: " + e.getMessage(), e);
+            }
+        } else if (isS3Active()) {
+            PutObjectRequest request = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(metadataKey)
+                    .contentType("application/json")
+                    .build();
+            s3Client.putObject(request, RequestBody.fromString(jsonContent));
+        } else {
+            Path target = Paths.get("data", "storage", metadataKey);
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, jsonContent, StandardCharsets.UTF_8);
+            logger.info("✅ Saved item to local storage: {}", target);
+        }
 
-        s3Client.putObject(request, RequestBody.fromString(jsonContent));
-
-        // Update Cache
         itemCache.put(item.getItemId(), item);
         itemLastModifiedCache.put(item.getItemId(), java.time.Instant.now());
-
         return item;
     }
 
     public Item getItem(String itemId) {
-        System.out.println("🔍 getItem called with: " + itemId);
+        Item cached = itemCache.get(itemId);
+        if (cached != null) return cached;
 
-        // Strategy 1: Try with itemId as-is
-        try {
-            String metadataKey = metadataPrefix + "items/" + itemId + ".json";
-            System.out.println("🔍 Strategy 1 - Looking for: " + metadataKey);
+        String metadataKey = metadataPrefix + "items/" + itemId + ".json";
 
-            GetObjectRequest request = GetObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(metadataKey)
-                    .build();
-
-            ResponseInputStream<GetObjectResponse> response = s3Client.getObject(request);
-            Item item = objectMapper.readValue(response, Item.class);
-            if (item != null && item.getImageUrl() == null) {
-                item.setImageUrl(generateImageUrl(itemId));
+        if (isGcsActive()) {
+            try {
+                Blob blob = gcsClient.get(BlobId.of(gcsBucketName, metadataKey));
+                if (blob != null && blob.exists()) {
+                    Item item = objectMapper.readValue(blob.getContent(), Item.class);
+                    if (item != null) {
+                        if (item.getImageUrl() == null) item.setImageUrl(generateImageUrl(itemId));
+                        itemCache.put(itemId, item);
+                        return item;
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("GCS getItem miss for {}: {}", itemId, e.getMessage());
             }
-            System.out.println("✅ Strategy 1 SUCCESS: " + item.getName());
-            return item;
-        } catch (Exception e) {
-            System.out.println("❌ Strategy 1 failed: " + e.getMessage());
-        }
-
-        // Strategy 2: Try with images/ prefix
-        try {
-            String metadataKeyWithPrefix = metadataPrefix + "items/" + imagesPrefix + itemId + ".json";
-            System.out.println("🔍 Strategy 2 - Looking for: " + metadataKeyWithPrefix);
-
-            GetObjectRequest request = GetObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(metadataKeyWithPrefix)
-                    .build();
-
-            ResponseInputStream<GetObjectResponse> response = s3Client.getObject(request);
-            Item item = objectMapper.readValue(response, Item.class);
-            if (item != null && item.getImageUrl() == null) {
-                item.setImageUrl(generateImageUrl(imagesPrefix + itemId));
-            }
-            System.out.println("✅ Strategy 2 SUCCESS: " + item.getName());
-            return item;
-        } catch (Exception e2) {
-            System.out.println("❌ Strategy 2 failed: " + e2.getMessage());
-        }
-
-        // Strategy 3: Search all items by matching filename
-        try {
-            System.out.println("🔍 Strategy 3 - Searching all items for match");
-            List<Item> allItems = getAllItems();
-            for (Item item : allItems) {
-                if (item.getItemId().equals(itemId) ||
-                        item.getItemId().endsWith("/" + itemId) ||
-                        item.getItemId().contains(itemId)) {
-                    System.out.println(
-                            "✅ Strategy 3 SUCCESS: Found " + item.getName() + " with itemId: " + item.getItemId());
+        } else if (isS3Active()) {
+            try {
+                GetObjectRequest request = GetObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(metadataKey)
+                        .build();
+                ResponseInputStream<GetObjectResponse> response = s3Client.getObject(request);
+                Item item = objectMapper.readValue(response, Item.class);
+                if (item != null) {
+                    if (item.getImageUrl() == null) item.setImageUrl(generateImageUrl(itemId));
+                    itemCache.put(itemId, item);
                     return item;
                 }
-            }
-        } catch (Exception e3) {
-            System.out.println("❌ Strategy 3 failed: " + e3.getMessage());
+            } catch (Exception ignored) {}
+        } else {
+            try {
+                Path target = Paths.get("data", "storage", metadataKey);
+                if (Files.exists(target)) {
+                    Item item = objectMapper.readValue(Files.readString(target), Item.class);
+                    itemCache.put(itemId, item);
+                    return item;
+                }
+            } catch (Exception ignored) {}
         }
-
-        System.out.println("❌ All strategies failed for itemId: " + itemId);
         return null;
     }
 
     public List<Item> getAllItems() {
         List<Item> items = java.util.Collections.synchronizedList(new ArrayList<>());
-        try {
-            ListObjectsV2Request request = ListObjectsV2Request.builder()
-                    .bucket(bucketName)
-                    .prefix(metadataPrefix + "items/")
-                    .build();
 
-            ListObjectsV2Response response = s3Client.listObjectsV2(request);
-            List<java.util.concurrent.CompletableFuture<Void>> futures = new ArrayList<>();
-
-            for (S3Object s3Object : response.contents()) {
-                if (s3Object.key().endsWith(".json")) {
-                    String itemId = s3Object.key()
-                            .replace(metadataPrefix + "items/", "")
-                            .replace(".json", "");
-                    
-                    java.time.Instant s3LastModified = s3Object.lastModified();
-                    Item cachedItem = itemCache.get(itemId);
-                    
-                    if (cachedItem != null && s3LastModified.equals(itemLastModifiedCache.get(itemId))) {
-                        if (!"DELETED".equals(cachedItem.getStatus())) {
-                            items.add(cachedItem);
-                        }
-                    } else {
-                        futures.add(java.util.concurrent.CompletableFuture.runAsync(() -> {
-                            Item item = getItem(itemId);
-                            if (item != null) {
+        if (isGcsActive()) {
+            try {
+                Page<Blob> blobs = gcsClient.list(gcsBucketName, Storage.BlobListOption.prefix(metadataPrefix + "items/"));
+                for (Blob blob : blobs.iterateAll()) {
+                    if (blob.getName().endsWith(".json")) {
+                        String itemId = blob.getName().replace(metadataPrefix + "items/", "").replace(".json", "");
+                        try {
+                            Item item = objectMapper.readValue(blob.getContent(), Item.class);
+                            if (item != null && !"DELETED".equals(item.getStatus())) {
+                                items.add(item);
                                 itemCache.put(itemId, item);
-                                itemLastModifiedCache.put(itemId, s3LastModified);
-                                if (!"DELETED".equals(item.getStatus())) {
-                                    items.add(item);
-                                }
                             }
-                        }));
+                        } catch (Exception ex) {
+                            logger.warn("Could not parse item JSON from blob {}: {}", blob.getName(), ex.getMessage());
+                        }
                     }
                 }
+            } catch (Exception e) {
+                logger.warn("GCS getAllItems failed: {}", e.getMessage());
             }
-
-            // Wait for all fetches to complete
-            java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
-
-            // Create a copy to safely sort
-            List<Item> sortedItems = new ArrayList<>(items);
-            // Sort by creation date - newest first
-            sortedItems.sort((a, b) -> {
-                if (a.getCreatedAt() == null && b.getCreatedAt() == null)
-                    return 0;
-                if (a.getCreatedAt() == null)
-                    return 1;
-                if (b.getCreatedAt() == null)
-                    return -1;
-                return b.getCreatedAt().compareTo(a.getCreatedAt());
-            });
-            
-            return sortedItems;
-
-        } catch (Exception e) {
-            // Return empty list on error
+        } else if (isS3Active()) {
+            try {
+                ListObjectsV2Request request = ListObjectsV2Request.builder()
+                        .bucket(bucketName)
+                        .prefix(metadataPrefix + "items/")
+                        .build();
+                ListObjectsV2Response response = s3Client.listObjectsV2(request);
+                for (S3Object s3Object : response.contents()) {
+                    if (s3Object.key().endsWith(".json")) {
+                        String itemId = s3Object.key().replace(metadataPrefix + "items/", "").replace(".json", "");
+                        Item item = getItem(itemId);
+                        if (item != null && !"DELETED".equals(item.getStatus())) {
+                            items.add(item);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("S3 getAllItems failed: {}", e.getMessage());
+            }
+        } else {
+            try {
+                Path dir = Paths.get("data", "storage", metadataPrefix + "items");
+                if (Files.exists(dir)) {
+                    try (var stream = Files.list(dir)) {
+                        stream.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
+                            try {
+                                Item item = objectMapper.readValue(Files.readString(p), Item.class);
+                                if (item != null && !"DELETED".equals(item.getStatus())) {
+                                    items.add(item);
+                                }
+                            } catch (Exception ignored) {}
+                        });
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Local getAllItems failed: {}", e.getMessage());
+            }
         }
-        return new ArrayList<>(items);
+
+        List<Item> sortedItems = new ArrayList<>(items);
+        sortedItems.sort((a, b) -> {
+            if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+            if (a.getCreatedAt() == null) return 1;
+            if (b.getCreatedAt() == null) return -1;
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
+        return sortedItems;
     }
 
     public String generateImageUrl(String imageKey) {
-        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, imageKey);
+        if (isGcsActive()) {
+            return String.format("https://storage.googleapis.com/%s/%s", gcsBucketName, imageKey);
+        } else if (isS3Active()) {
+            return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, imageKey);
+        } else {
+            String clean = imageKey.startsWith("images/") ? imageKey.substring("images/".length()) : imageKey;
+            return "/api/catalog/images/" + clean;
+        }
+    }
+
+    public byte[] getImageBytes(String key) {
+        if (isGcsActive()) {
+            try {
+                Blob blob = gcsClient.get(BlobId.of(gcsBucketName, key));
+                if (blob != null && blob.exists()) {
+                    return blob.getContent();
+                }
+            } catch (Exception e) {
+                logger.warn("GCS getImageBytes failed for {}: {}", key, e.getMessage());
+            }
+        }
+        if (isS3Active()) {
+            try {
+                GetObjectRequest req = GetObjectRequest.builder().bucket(bucketName).key(key).build();
+                ResponseBytes<GetObjectResponse> obj = s3Client.getObjectAsBytes(req);
+                return obj.asByteArray();
+            } catch (Exception ignored) {}
+        }
+        try {
+            Path p = Paths.get("data", "storage", key);
+            if (Files.exists(p)) return Files.readAllBytes(p);
+        } catch (Exception ignored) {}
+        return null;
     }
 
     public List<Item> getItemsByCreator(String email) {
@@ -309,74 +375,67 @@ public class S3StorageService {
     public List<Item> getActiveItems() {
         return getAllItems().stream()
                 .filter(item -> "ACTIVE".equals(item.getStatus()))
-                .sorted((a, b) -> {
-                    if (a.getCreatedAt() == null && b.getCreatedAt() == null)
-                        return 0;
-                    if (a.getCreatedAt() == null)
-                        return 1;
-                    if (b.getCreatedAt() == null)
-                        return -1;
-                    return b.getCreatedAt().compareTo(a.getCreatedAt());
-                })
                 .toList();
     }
 
     public boolean deleteItem(String itemId) {
         try {
-            // Fetch the item to obtain image URLs
             Item item = getItem(itemId);
             if (item != null) {
-                // Delete associated image files from S3 if they exist
                 if (item.getImageUrl() != null) {
                     String key = extractKeyFromUrl(item.getImageUrl());
-                    if (key != null) {
-                        deleteObject(key);
-                    }
+                    if (key != null) deleteObject(key);
                 }
                 if (item.getImageUrls() != null) {
                     for (String url : item.getImageUrls()) {
                         String key = extractKeyFromUrl(url);
-                        if (key != null) {
-                            deleteObject(key);
-                        }
+                        if (key != null) deleteObject(key);
                     }
                 }
-                // Soft delete: mark item as DELETED
                 item.setStatus("DELETED");
                 saveItem(item);
                 return true;
             }
             return false;
         } catch (Exception e) {
-            System.out.println("❌ Error deleting item: " + e.getMessage());
+            logger.error("Error deleting item {}: {}", itemId, e.getMessage());
             return false;
         }
     }
-    
-    // Helper method to extract S3 object key from a full URL
+
     private String extractKeyFromUrl(String url) {
         try {
             int idx = url.indexOf(".com/");
             if (idx != -1 && idx + 5 < url.length()) {
                 return url.substring(idx + 5);
             }
-        } catch (Exception e) {
-            System.out.println("❌ Failed to extract S3 key: " + e.getMessage());
-        }
+            int apiIdx = url.indexOf("/images/");
+            if (apiIdx != -1) {
+                return url.substring(apiIdx + 1);
+            }
+        } catch (Exception ignored) {}
         return null;
     }
 
-    // Helper method to delete an object from S3
     private void deleteObject(String key) {
         try {
-            DeleteObjectRequest deleteReq = DeleteObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(key)
-                    .build();
-            s3Client.deleteObject(deleteReq);
-            System.out.println("🗑️ Deleted S3 object: " + key);
+            if (isGcsActive()) {
+                gcsClient.delete(BlobId.of(gcsBucketName, key));
+                logger.info("🗑️ Deleted GCS blob: gs://{}/{}", gcsBucketName, key);
+            } else if (isS3Active()) {
+                DeleteObjectRequest deleteReq = DeleteObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(key)
+                        .build();
+                s3Client.deleteObject(deleteReq);
+                logger.info("🗑️ Deleted S3 object: {}", key);
+            } else {
+                Path p = Paths.get("data", "storage", key);
+                Files.deleteIfExists(p);
+                logger.info("🗑️ Deleted local storage file: {}", p);
+            }
         } catch (Exception e) {
-            System.out.println("❌ Failed to delete S3 object " + key + ": " + e.getMessage());
+            logger.warn("Failed to delete object {}: {}", key, e.getMessage());
         }
     }
 }

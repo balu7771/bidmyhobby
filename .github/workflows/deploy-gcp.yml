@@ -50,8 +50,10 @@ jobs:
           IMAGE_TAG=validation \
           docker compose --env-file .env.example -f docker-compose.gcp.yml config --quiet
 
-      - name: Check Lambda Python syntax
-        run: python3 -m py_compile lambdas/image-processor/lambda_function.py
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile lambdas/image-processor/lambda_function.py
+          python3 -m py_compile services/image-processor/app.py
 
       - name: Run backend tests
         shell: bash
@@ -102,10 +104,12 @@ jobs:
         run: |
           set -euo pipefail
           image_base="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/bidmyhobby"
+          docker build -t "${image_base}:${IMAGE_TAG}-image-processor" ./services/image-processor
           docker build -t "${image_base}:${IMAGE_TAG}-catalog" ./services/catalog
           docker build -t "${image_base}:${IMAGE_TAG}-auction" ./services/auction
           docker build -t "${image_base}:${IMAGE_TAG}-hobby-ai" ./services/hobby-ai
           docker build -t "${image_base}:${IMAGE_TAG}-frontend" ./apps/web
+          docker push "${image_base}:${IMAGE_TAG}-image-processor"
           docker push "${image_base}:${IMAGE_TAG}-catalog"
           docker push "${image_base}:${IMAGE_TAG}-auction"
           docker push "${image_base}:${IMAGE_TAG}-hobby-ai"

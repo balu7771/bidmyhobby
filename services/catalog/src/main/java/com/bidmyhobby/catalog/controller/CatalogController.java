@@ -37,11 +37,6 @@ public class CatalogController {
     @Autowired
     NotificationPublisher notificationPublisher;
 
-    @Value("${aws.s3.bucket.name:bidmyhobby-catalog}")
-    private String bucketName;
-
-    @Autowired
-    S3Client s3Client;
     @Autowired
     AuthenticatedUser authenticatedUser;
 
@@ -199,29 +194,22 @@ public class CatalogController {
             filename
         };
         for (String key : candidates) {
-            try {
-                GetObjectRequest req = GetObjectRequest.builder()
-                        .bucket(bucketName)
-                        .key(key)
-                        .build();
-                ResponseBytes<GetObjectResponse> obj = s3Client.getObjectAsBytes(req);
-                String ct = obj.response().contentType();
-                if (ct == null || ct.isBlank() || "binary/octet-stream".equals(ct)) {
-                    String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "";
-                    ct = switch (ext) {
-                        case "jpg", "jpeg" -> "image/jpeg";
-                        case "png" -> "image/png";
-                        case "gif" -> "image/gif";
-                        case "webp" -> "image/webp";
-                        case "pdf" -> "application/pdf";
-                        default -> "image/jpeg";
-                    };
-                }
+            byte[] bytes = s3StorageService.getImageBytes(key);
+            if (bytes != null && bytes.length > 0) {
+                String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "";
+                String ct = switch (ext) {
+                    case "jpg", "jpeg" -> "image/jpeg";
+                    case "png" -> "image/png";
+                    case "gif" -> "image/gif";
+                    case "webp" -> "image/webp";
+                    case "pdf" -> "application/pdf";
+                    default -> "image/jpeg";
+                };
                 return ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(ct))
                         .header(HttpHeaders.CACHE_CONTROL, "max-age=86400")
-                        .body(obj.asByteArray());
-            } catch (Exception ignored) {}
+                        .body(bytes);
+            }
         }
         return ResponseEntity.notFound().build();
     }
