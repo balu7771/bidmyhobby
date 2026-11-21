@@ -60,7 +60,13 @@ jobs:
         run: |
           set -euo pipefail
           for service in catalog auction hobby-ai; do
-            (cd "services/$service" && ./mvnw --batch-mode clean verify)
+            echo "::group::Testing $service"
+            if command -v mvn >/dev/null 2>&1; then
+              (cd "services/$service" && mvn --batch-mode clean verify)
+            else
+              (cd "services/$service" && ./mvnw --batch-mode clean verify)
+            fi
+            echo "::endgroup::"
           done
 
       - name: Build frontend
@@ -74,7 +80,13 @@ jobs:
         run: |
           set -euo pipefail
           for service in catalog auction hobby-ai; do
-            (cd "services/$service" && ./mvnw --batch-mode -DskipTests package)
+            echo "::group::Packaging $service"
+            if command -v mvn >/dev/null 2>&1; then
+              (cd "services/$service" && mvn --batch-mode -DskipTests package)
+            else
+              (cd "services/$service" && ./mvnw --batch-mode -DskipTests package)
+            fi
+            echo "::endgroup::"
           done
 
       - id: auth
