@@ -42,6 +42,8 @@ public class BidStorageService {
     @Value("${aws.s3.region:ap-south-1}")
     private String region;
 
+    private volatile boolean s3Available = true;
+
     public BidStorageService(@Autowired(required = false) S3Client s3Client,
                              @Autowired(required = false) Storage gcsClient) {
         this.s3Client = s3Client;
@@ -54,31 +56,38 @@ public class BidStorageService {
     }
 
     private boolean isS3Active() {
-        return s3Client != null && bucketName != null && !bucketName.isBlank() && !bucketName.contains("dummy");
+        return s3Available && s3Client != null && bucketName != null && !bucketName.isBlank() && !bucketName.contains("dummy");
     }
 
     public void saveBid(String itemId, String bidderEmail, double bidAmount) throws Exception {
-        try {
-            String bidId = UUID.randomUUID().toString();
-            String bidKey = bidsPrefix + itemId + "/" + bidId + ".json";
+        String bidId = UUID.randomUUID().toString();
+        String bidKey = bidsPrefix + itemId + "/" + bidId + ".json";
 
-            Map<String, Object> bidData = new HashMap<>();
-            bidData.put("bidId", bidId);
-            bidData.put("itemId", itemId);
-            bidData.put("bidderEmail", bidderEmail);
-            bidData.put("bidAmount", bidAmount);
-            bidData.put("currency", "INR");
-            bidData.put("timestamp", System.currentTimeMillis());
-            bidData.put("status", "ACTIVE");
+        Map<String, Object> bidData = new HashMap<>();
+        bidData.put("bidId", bidId);
+        bidData.put("itemId", itemId);
+        bidData.put("bidderEmail", bidderEmail);
+        bidData.put("bidAmount", bidAmount);
+        bidData.put("currency", "INR");
+        bidData.put("timestamp", System.currentTimeMillis());
+        bidData.put("status", "ACTIVE");
 
-            String jsonContent = objectMapper.writeValueAsString(bidData);
+        String jsonContent = objectMapper.writeValueAsString(bidData);
 
-            if (isGcsActive()) {
+        if (isGcsActive()) {
+            try {
                 BlobId blobId = BlobId.of(gcsBucketName, bidKey);
                 BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("application/json").build();
                 gcsClient.create(blobInfo, jsonContent.getBytes(StandardCharsets.UTF_8));
                 logger.info("✅ Saved bid to GCS - BidID: {}, ItemID: {}, Bidder: {}", bidId, itemId, bidderEmail);
-            } else if (isS3Active()) {
+                return;
+            } catch (Exception e) {
+                logger.warn("⚠️ GCS saveBid failed ({}), falling back to local storage.", e.getMessage());
+                saveBidToLocal(bidKey, jsonContent, bidId, itemId, bidderEmail);
+                return;
+            }
+        } else if (isS3Active()) {
+            try {
                 PutObjectRequest request = PutObjectRequest.builder()
                         .bucket(bucketName)
                         .key(bidKey)
@@ -86,20 +95,27 @@ public class BidStorageService {
                         .build();
                 s3Client.putObject(request, RequestBody.fromString(jsonContent));
                 logger.info("✅ Saved bid to S3 - BidID: {}, ItemID: {}, Bidder: {}", bidId, itemId, bidderEmail);
-            } else {
-                Path target = Paths.get("data", "storage", bidKey);
-                Files.createDirectories(target.getParent());
-                Files.writeString(target, jsonContent, StandardCharsets.UTF_8);
-                logger.info("✅ Saved bid to local storage - BidID: {}, ItemID: {}, Bidder: {}", bidId, itemId, bidderEmail);
+                return;
+            } catch (Exception e) {
+                logger.warn("⚠️ S3 saveBid failed ({}). Disabling S3, falling back to local storage.", e.getMessage());
+                s3Available = false;
+                saveBidToLocal(bidKey, jsonContent, bidId, itemId, bidderEmail);
+                return;
             }
-        } catch (Exception e) {
-            logger.error("❌ Unexpected error saving bid", e);
-            throw e;
+        } else {
+            saveBidToLocal(bidKey, jsonContent, bidId, itemId, bidderEmail);
         }
     }
 
+    private void saveBidToLocal(String bidKey, String jsonContent, String bidId, String itemId, String bidderEmail) throws IOException {
+        Path target = Paths.get("data", "storage", bidKey);
+        Files.createDirectories(target.getParent());
+        Files.writeString(target, jsonContent, StandardCharsets.UTF_8);
+        logger.info("✅ Saved bid to local storage - BidID: {}, ItemID: {}, Bidder: {}", bidId, itemId, bidderEmail);
+    }
+
     public List<Map<String, Object>> getBidsForItem(String itemId) {
-        List<Map<String, Object>> bids = new ArrayList<>();
+        Map<String, Map<String, Object>> bidsMap = new LinkedHashMap<>();
         String prefix = bidsPrefix + itemId + "/";
 
         if (isGcsActive()) {
@@ -109,16 +125,19 @@ public class BidStorageService {
                     if (blob.getName().endsWith(".json")) {
                         try {
                             Map<String, Object> bidData = objectMapper.readValue(blob.getContent(), Map.class);
-                            bids.add(bidData);
+                            String bidId = (String) bidData.get("bidId");
+                            if (bidId != null) bidsMap.put(bidId, bidData);
                         } catch (Exception ex) {
                             logger.warn("Error parsing GCS bid data: {}", ex.getMessage());
                         }
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error retrieving bids from GCS for item {}", itemId, e);
+                logger.warn("Error retrieving bids from GCS for item {}: {}", itemId, e.getMessage());
             }
-        } else if (isS3Active()) {
+        }
+
+        if (isS3Active()) {
             try {
                 ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
                         .bucket(bucketName)
@@ -134,38 +153,42 @@ public class BidStorageService {
                                 .build();
                         String content = s3Client.getObjectAsBytes(getRequest).asUtf8String();
                         Map<String, Object> bidData = objectMapper.readValue(content, Map.class);
-                        bids.add(bidData);
+                        String bidId = (String) bidData.get("bidId");
+                        if (bidId != null) bidsMap.putIfAbsent(bidId, bidData);
                     } catch (Exception e) {
                         logger.warn("Error parsing S3 bid data: {}", e.getMessage());
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error retrieving bids from S3 for item {}", itemId, e);
-            }
-        } else {
-            try {
-                Path dir = Paths.get("data", "storage", prefix);
-                if (Files.exists(dir)) {
-                    try (var stream = Files.list(dir)) {
-                        stream.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
-                            try {
-                                Map<String, Object> bidData = objectMapper.readValue(Files.readString(p), Map.class);
-                                bids.add(bidData);
-                            } catch (Exception ignored) {}
-                        });
-                    }
-                }
-            } catch (Exception e) {
-                logger.error("Error retrieving bids from local storage for item {}", itemId, e);
+                logger.warn("Error retrieving bids from S3 for item {}: {}. Disabling S3.", itemId, e.getMessage());
+                s3Available = false;
             }
         }
 
+        try {
+            Path dir = Paths.get("data", "storage", prefix);
+            if (Files.exists(dir)) {
+                try (var stream = Files.list(dir)) {
+                    stream.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
+                        try {
+                            Map<String, Object> bidData = objectMapper.readValue(Files.readString(p, StandardCharsets.UTF_8), Map.class);
+                            String bidId = (String) bidData.get("bidId");
+                            if (bidId != null) bidsMap.putIfAbsent(bidId, bidData);
+                        } catch (Exception ignored) {}
+                    });
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Error retrieving bids from local storage for item {}: {}", itemId, e.getMessage());
+        }
+
+        List<Map<String, Object>> bids = new ArrayList<>(bidsMap.values());
         bids.sort((a, b) -> Long.compare((Long) b.get("timestamp"), (Long) a.get("timestamp")));
         return bids;
     }
 
     public List<Map<String, Object>> getBidsByUser(String userEmail) {
-        List<Map<String, Object>> userBids = new ArrayList<>();
+        Map<String, Map<String, Object>> userBidsMap = new LinkedHashMap<>();
 
         if (isGcsActive()) {
             try {
@@ -175,7 +198,8 @@ public class BidStorageService {
                         try {
                             Map<String, Object> bidData = objectMapper.readValue(blob.getContent(), Map.class);
                             if (userEmail.equals(bidData.get("bidderEmail"))) {
-                                userBids.add(bidData);
+                                String bidId = (String) bidData.get("bidId");
+                                if (bidId != null) userBidsMap.put(bidId, bidData);
                             }
                         } catch (Exception ex) {
                             logger.warn("Error parsing GCS user bid: {}", ex.getMessage());
@@ -183,9 +207,11 @@ public class BidStorageService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error retrieving user bids from GCS: {}", e.getMessage());
+                logger.warn("Error retrieving user bids from GCS: {}", e.getMessage());
             }
-        } else if (isS3Active()) {
+        }
+
+        if (isS3Active()) {
             try {
                 ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
                         .bucket(bucketName)
@@ -202,35 +228,39 @@ public class BidStorageService {
                         String content = s3Client.getObjectAsBytes(getRequest).asUtf8String();
                         Map<String, Object> bidData = objectMapper.readValue(content, Map.class);
                         if (userEmail.equals(bidData.get("bidderEmail"))) {
-                            userBids.add(bidData);
+                            String bidId = (String) bidData.get("bidId");
+                            if (bidId != null) userBidsMap.putIfAbsent(bidId, bidData);
                         }
                     } catch (Exception e) {
                         logger.warn("Error parsing S3 user bid: {}", e.getMessage());
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error retrieving user bids from S3: {}", e.getMessage());
-            }
-        } else {
-            try {
-                Path dir = Paths.get("data", "storage", bidsPrefix);
-                if (Files.exists(dir)) {
-                    try (var walk = Files.walk(dir)) {
-                        walk.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
-                            try {
-                                Map<String, Object> bidData = objectMapper.readValue(Files.readString(p), Map.class);
-                                if (userEmail.equals(bidData.get("bidderEmail"))) {
-                                    userBids.add(bidData);
-                                }
-                            } catch (Exception ignored) {}
-                        });
-                    }
-                }
-            } catch (Exception e) {
-                logger.error("Error retrieving user bids from local storage: {}", e.getMessage());
+                logger.warn("Error retrieving user bids from S3: {}. Disabling S3.", e.getMessage());
+                s3Available = false;
             }
         }
 
+        try {
+            Path dir = Paths.get("data", "storage", bidsPrefix);
+            if (Files.exists(dir)) {
+                try (var walk = Files.walk(dir)) {
+                    walk.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
+                        try {
+                            Map<String, Object> bidData = objectMapper.readValue(Files.readString(p, StandardCharsets.UTF_8), Map.class);
+                            if (userEmail.equals(bidData.get("bidderEmail"))) {
+                                String bidId = (String) bidData.get("bidId");
+                                if (bidId != null) userBidsMap.putIfAbsent(bidId, bidData);
+                            }
+                        } catch (Exception ignored) {}
+                    });
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Error retrieving user bids from local storage: {}", e.getMessage());
+        }
+
+        List<Map<String, Object>> userBids = new ArrayList<>(userBidsMap.values());
         userBids.sort((a, b) -> Long.compare((Long) b.get("timestamp"), (Long) a.get("timestamp")));
         return userBids;
     }
