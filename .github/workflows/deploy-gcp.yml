@@ -149,6 +149,8 @@ jobs:
              sudo install -m 0644 /tmp/nginx.conf /opt/bidmyhobby/services/api-gateway/nginx.conf && \
              sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
              (grep -q '^GCP_DOMAIN=' /opt/bidmyhobby/.env && sudo sed -i 's|^GCP_DOMAIN=.*|GCP_DOMAIN=${GCP_DOMAIN}|' /opt/bidmyhobby/.env || echo 'GCP_DOMAIN=${GCP_DOMAIN}' | sudo tee -a /opt/bidmyhobby/.env) && \
+             (grep -q '^IMAGE_BASE=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_BASE=.*|IMAGE_BASE=${IMAGE_BASE}|' /opt/bidmyhobby/.env || echo 'IMAGE_BASE=${IMAGE_BASE}' | sudo tee -a /opt/bidmyhobby/.env) && \
+             (grep -q '^IMAGE_TAG=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' /opt/bidmyhobby/.env || echo 'IMAGE_TAG=${IMAGE_TAG}' | sudo tee -a /opt/bidmyhobby/.env) && \
              sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
              sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
              sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml restart caddy && \
