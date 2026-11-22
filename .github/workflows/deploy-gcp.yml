@@ -128,12 +128,7 @@ jobs:
           docker push "${image_base}:${IMAGE_TAG}-frontend"
           echo "IMAGE_BASE=${image_base}" >> "$GITHUB_ENV"
 
-      - name: Copy runtime configuration to VM
-        run: |
-          gcloud compute scp docker-compose.gcp.yml services/api-gateway/nginx.conf deployment/gcp/Caddyfile deployment/n8n/bidmyhobby-email-workflow.json \
-            "${VM_NAME}:/tmp/" --zone "${VM_ZONE}" --tunnel-through-iap
-
-      - name: Deploy and smoke-check
+      - name: Prepare deployment configuration
         shell: bash
         env:
           IMAGE_TAG: ${{ github.sha }}
@@ -143,22 +138,27 @@ jobs:
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
         run: |
           set -euo pipefail
+          {
+            echo "IMAGE_BASE=${IMAGE_BASE}"
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+            echo "GCP_DOMAIN=${GCP_DOMAIN}"
+            [ -n "${SMTP_USERNAME}" ] && echo "SMTP_USERNAME=${SMTP_USERNAME}"
+            [ -n "${SMTP_PASSWORD}" ] && echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
+            [ -n "${SMTP_FROM}" ] && echo "SMTP_FROM=${SMTP_FROM}"
+          } > deploy.env
+
+      - name: Copy runtime configuration to VM
+        run: |
+          gcloud compute scp scripts/deploy-gcp-vm.sh docker-compose.gcp.yml services/api-gateway/nginx.conf \
+            deployment/gcp/Caddyfile deployment/n8n/bidmyhobby-email-workflow.json deploy.env \
+            "${VM_NAME}:/tmp/" --zone "${VM_ZONE}" --tunnel-through-iap
+
+      - name: Deploy and smoke-check
+        shell: bash
+        run: |
+          set -euo pipefail
           gcloud compute ssh "${VM_NAME}" --zone "${VM_ZONE}" --tunnel-through-iap --command \
-            "sudo install -d -m 0755 /opt/bidmyhobby/services/api-gateway /opt/bidmyhobby/deployment/gcp /opt/bidmyhobby/deployment/n8n && \
-             sudo install -m 0644 /tmp/docker-compose.gcp.yml /opt/bidmyhobby/docker-compose.gcp.yml && \
-             sudo install -m 0644 /tmp/nginx.conf /opt/bidmyhobby/services/api-gateway/nginx.conf && \
-             sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
-             sudo install -m 0644 /tmp/bidmyhobby-email-workflow.json /opt/bidmyhobby/deployment/n8n/bidmyhobby-email-workflow.json && \
-             (grep -q '^GCP_DOMAIN=' /opt/bidmyhobby/.env && sudo sed -i 's|^GCP_DOMAIN=.*|GCP_DOMAIN=${GCP_DOMAIN}|' /opt/bidmyhobby/.env || echo 'GCP_DOMAIN=${GCP_DOMAIN}' | sudo tee -a /opt/bidmyhobby/.env) && \
-             (grep -q '^IMAGE_BASE=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_BASE=.*|IMAGE_BASE=${IMAGE_BASE}|' /opt/bidmyhobby/.env || echo 'IMAGE_BASE=${IMAGE_BASE}' | sudo tee -a /opt/bidmyhobby/.env) && \
-             (grep -q '^IMAGE_TAG=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' /opt/bidmyhobby/.env || echo 'IMAGE_TAG=${IMAGE_TAG}' | sudo tee -a /opt/bidmyhobby/.env) && \
-             ([ -n "${SMTP_USERNAME}" ] && (grep -q '^SMTP_USERNAME=' /opt/bidmyhobby/.env && sudo sed -i "s|^SMTP_USERNAME=.*|SMTP_USERNAME=${SMTP_USERNAME}|" /opt/bidmyhobby/.env || echo "SMTP_USERNAME=${SMTP_USERNAME}" | sudo tee -a /opt/bidmyhobby/.env) || true) && \
-             ([ -n "${SMTP_PASSWORD}" ] && (grep -q '^SMTP_PASSWORD=' /opt/bidmyhobby/.env && sudo sed -i "s|^SMTP_PASSWORD=.*|SMTP_PASSWORD=${SMTP_PASSWORD}|" /opt/bidmyhobby/.env || echo "SMTP_PASSWORD=${SMTP_PASSWORD}" | sudo tee -a /opt/bidmyhobby/.env) || true) && \
-             ([ -n "${SMTP_FROM}" ] && (grep -q '^SMTP_FROM=' /opt/bidmyhobby/.env && sudo sed -i "s|^SMTP_FROM=.*|SMTP_FROM=${SMTP_FROM}|" /opt/bidmyhobby/.env || echo "SMTP_FROM=${SMTP_FROM}" | sudo tee -a /opt/bidmyhobby/.env) || true) && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml pull && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' SMTP_USERNAME='${SMTP_USERNAME}' SMTP_PASSWORD='${SMTP_PASSWORD}' SMTP_FROM='${SMTP_FROM}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml up -d --wait --wait-timeout 480 --remove-orphans && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml restart caddy && \
-             sudo env IMAGE_BASE='${IMAGE_BASE}' IMAGE_TAG='${IMAGE_TAG}' GCP_DOMAIN='${GCP_DOMAIN}' docker compose --env-file /opt/bidmyhobby/.env -f /opt/bidmyhobby/docker-compose.gcp.yml ps"
+            "sudo bash /tmp/deploy-gcp-vm.sh"
 
       - name: Verify public HTTPS endpoint
         shell: bash
