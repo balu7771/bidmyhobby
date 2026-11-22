@@ -58,24 +58,48 @@ function parseBusinessContact(description: string | null | undefined): {
     return { intro: introLines.join("\n").trim(), ...result } as any;
 }
 
-/** Extracts the S3 filename from a full S3 URL or relative key and returns
- *  a backend-proxied URL so images load without needing a public S3 bucket. */
+/** Extracts the filename from an S3 URL, GCS URL, or relative/proxy key and returns
+ *  a backend-proxied URL so images load reliably across all environments. */
 function getCatalogImageUrl(urlOrKey: string | null | undefined): string {
     if (!urlOrKey) return "";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-    // Full S3 URL: https://bucket.s3.region.amazonaws.com/images/file.png
-    if (urlOrKey.startsWith("http")) {
-        const match = urlOrKey.match(/amazonaws\.com\/(.+)$/);
-        if (match) {
-            const key = decodeURIComponent(match[1]); // "images/filename.png"
-            const filename = key.startsWith("images/") ? key.slice("images/".length) : key;
-            return `${apiUrl}/catalog/images/${encodeURIComponent(filename)}`;
+
+    // 1. If it already has /catalog/images/ (e.g. /api/catalog/images/filename.jpg or full URL)
+    const proxyIdx = urlOrKey.indexOf("/catalog/images/");
+    if (proxyIdx !== -1) {
+        let clean = decodeURIComponent(urlOrKey.slice(proxyIdx + "/catalog/images/".length));
+        while (clean.includes("/catalog/images/")) {
+            clean = clean.slice(clean.indexOf("/catalog/images/") + "/catalog/images/".length);
         }
-        return urlOrKey; // unknown URL, use as-is
+        if (clean.startsWith("images/")) clean = clean.slice("images/".length);
+        clean = clean.replace(/^\/+/, "");
+        return `${apiUrl}/catalog/images/${clean}`;
     }
-    // Relative key: "images/filename.png" or just "filename.png"
-    const filename = urlOrKey.startsWith("images/") ? urlOrKey.slice("images/".length) : urlOrKey;
-    return `${apiUrl}/catalog/images/${encodeURIComponent(filename)}`;
+
+    // 2. Full S3 URL: https://bucket.s3.region.amazonaws.com/images/file.png
+    if (urlOrKey.startsWith("http://") || urlOrKey.startsWith("https://")) {
+        const s3Match = urlOrKey.match(/amazonaws\.com\/(.+)$/);
+        if (s3Match) {
+            const key = decodeURIComponent(s3Match[1]);
+            const filename = key.startsWith("images/") ? key.slice("images/".length) : key;
+            return `${apiUrl}/catalog/images/${filename}`;
+        }
+
+        // 3. Full GCS URL: https://storage.googleapis.com/bucket-name/images/file.png
+        const gcsMatch = urlOrKey.match(/storage\.googleapis\.com\/[^/]+\/(.+)$/);
+        if (gcsMatch) {
+            const key = decodeURIComponent(gcsMatch[1]);
+            const filename = key.startsWith("images/") ? key.slice("images/".length) : key;
+            return `${apiUrl}/catalog/images/${filename}`;
+        }
+
+        return urlOrKey;
+    }
+
+    // 4. Relative key: "images/filename.png" or "filename.png"
+    let filename = urlOrKey.startsWith("images/") ? urlOrKey.slice("images/".length) : urlOrKey;
+    filename = filename.replace(/^\/+/, "");
+    return `${apiUrl}/catalog/images/${filename}`;
 }
 
 function ItemCard({ item, index, onItemClick, userEmail }: { item: any, index: number, onItemClick: (item: any) => void, userEmail: string | null }) {

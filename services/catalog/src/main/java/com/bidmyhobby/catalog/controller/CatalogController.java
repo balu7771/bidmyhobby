@@ -189,14 +189,29 @@ public class CatalogController {
      */
     @GetMapping("/images/{filename:.+}")
     public ResponseEntity<byte[]> getImage(@PathVariable String filename) {
+        String clean = filename;
+        try {
+            clean = java.net.URLDecoder.decode(clean, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception ignored) {}
+
+        if (clean.contains("/catalog/images/")) {
+            clean = clean.substring(clean.lastIndexOf("/catalog/images/") + "/catalog/images/".length());
+        }
+        if (clean.startsWith("images/")) {
+            clean = clean.substring("images/".length());
+        }
+        clean = clean.replaceFirst("^/+", "");
+
         String[] candidates = {
+            "images/" + clean,
+            clean,
             "images/" + filename,
             filename
         };
         for (String key : candidates) {
             byte[] bytes = s3StorageService.getImageBytes(key);
             if (bytes != null && bytes.length > 0) {
-                String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "";
+                String ext = clean.contains(".") ? clean.substring(clean.lastIndexOf('.') + 1).toLowerCase() : "";
                 String ct = switch (ext) {
                     case "jpg", "jpeg" -> "image/jpeg";
                     case "png" -> "image/png";
