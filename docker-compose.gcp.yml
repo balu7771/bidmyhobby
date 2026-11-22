@@ -143,7 +143,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/send-email}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?Set AUTH_TOKEN_SECRET}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
@@ -170,6 +170,24 @@ services:
     networks:
       - bidmyhobby-network
 
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://n8n:5678/
+      - GENERIC_TIMEZONE=Asia/Kolkata
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./deployment/n8n:/workflows:ro
+    networks:
+      - bidmyhobby-network
+
 networks:
   bidmyhobby-network:
     driver: bridge
@@ -179,5 +197,6 @@ volumes:
   auction-data:
   hobby-ai-data:
   hobby-ai-images:
+  n8n-data:
   caddy-data:
   caddy-config:

@@ -130,7 +130,7 @@ jobs:
 
       - name: Copy runtime configuration to VM
         run: |
-          gcloud compute scp docker-compose.gcp.yml services/api-gateway/nginx.conf deployment/gcp/Caddyfile \
+          gcloud compute scp docker-compose.gcp.yml services/api-gateway/nginx.conf deployment/gcp/Caddyfile deployment/n8n/bidmyhobby-email-workflow.json \
             "${VM_NAME}:/tmp/" --zone "${VM_ZONE}" --tunnel-through-iap
 
       - name: Deploy and smoke-check
@@ -144,10 +144,11 @@ jobs:
         run: |
           set -euo pipefail
           gcloud compute ssh "${VM_NAME}" --zone "${VM_ZONE}" --tunnel-through-iap --command \
-            "sudo install -d -m 0755 /opt/bidmyhobby/services/api-gateway /opt/bidmyhobby/deployment/gcp && \
+            "sudo install -d -m 0755 /opt/bidmyhobby/services/api-gateway /opt/bidmyhobby/deployment/gcp /opt/bidmyhobby/deployment/n8n && \
              sudo install -m 0644 /tmp/docker-compose.gcp.yml /opt/bidmyhobby/docker-compose.gcp.yml && \
              sudo install -m 0644 /tmp/nginx.conf /opt/bidmyhobby/services/api-gateway/nginx.conf && \
              sudo install -m 0644 /tmp/Caddyfile /opt/bidmyhobby/deployment/gcp/Caddyfile && \
+             sudo install -m 0644 /tmp/bidmyhobby-email-workflow.json /opt/bidmyhobby/deployment/n8n/bidmyhobby-email-workflow.json && \
              (grep -q '^GCP_DOMAIN=' /opt/bidmyhobby/.env && sudo sed -i 's|^GCP_DOMAIN=.*|GCP_DOMAIN=${GCP_DOMAIN}|' /opt/bidmyhobby/.env || echo 'GCP_DOMAIN=${GCP_DOMAIN}' | sudo tee -a /opt/bidmyhobby/.env) && \
              (grep -q '^IMAGE_BASE=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_BASE=.*|IMAGE_BASE=${IMAGE_BASE}|' /opt/bidmyhobby/.env || echo 'IMAGE_BASE=${IMAGE_BASE}' | sudo tee -a /opt/bidmyhobby/.env) && \
              (grep -q '^IMAGE_TAG=' /opt/bidmyhobby/.env && sudo sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' /opt/bidmyhobby/.env || echo 'IMAGE_TAG=${IMAGE_TAG}' | sudo tee -a /opt/bidmyhobby/.env) && \
