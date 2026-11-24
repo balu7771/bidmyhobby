@@ -2,6 +2,8 @@ package com.bidmyhobby.hobbyaibackend.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,7 @@ import java.util.Map;
 
 @Service
 public class OpenAiChatService {
+    private static final Logger log = LoggerFactory.getLogger(OpenAiChatService.class);
     private final ObjectMapper mapper;
     private final HttpClient client;
     private final String apiKey;
@@ -34,32 +37,74 @@ public class OpenAiChatService {
 
     public String chat(String prompt) {
         if (apiKey == null || apiKey.isBlank()) throw new IllegalStateException("OPENAI_API_KEY is not configured");
+
+        // Try primary configured apiUrl (e.g. /v1/responses or /v1/chat/completions)
         try {
-            String body = mapper.writeValueAsString(Map.of(
-                    "model", model,
-                    "input", List.of(Map.of("role", "user", "content", prompt))));
-            HttpRequest request = HttpRequest.newBuilder(URI.create(apiUrl))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("OpenAI request failed with status " + response.statusCode());
-            }
-            JsonNode root = mapper.readTree(response.body());
-            for (JsonNode output : root.path("output")) {
-                for (JsonNode content : output.path("content")) {
-                    if ("output_text".equals(content.path("type").asText())) return content.path("text").asText();
+            return sendRequest(apiUrl, prompt);
+        } catch (Exception e) {
+            log.warn("Primary OpenAI endpoint ({}) failed: {}. Trying fallback to /v1/chat/completions...", apiUrl, e.getMessage());
+            if (!apiUrl.contains("/chat/completions")) {
+                try {
+                    return sendRequest("https://api.openai.com/v1/chat/completions", prompt);
+                } catch (Exception fallbackEx) {
+                    log.error("OpenAI fallback also failed: {}", fallbackEx.getMessage());
+                    throw new IllegalStateException("OpenAI failed: " + fallbackEx.getMessage(), fallbackEx);
                 }
             }
-            throw new IllegalStateException("OpenAI returned no text");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("OpenAI request interrupted", e);
-        } catch (Exception e) {
             throw new IllegalStateException("Could not generate response: " + e.getMessage(), e);
         }
+    }
+
+    private String sendRequest(String targetUrl, String prompt) throws Exception {
+        boolean isChatCompletions = targetUrl.contains("/chat/completions");
+        String body;
+        if (isChatCompletions) {
+            body = mapper.writeValueAsString(Map.of(
+                    "model", model,
+                    "messages", List.of(
+                            Map.of("role", "system", "content", "You are an expert holiday deal finder for BidMyHobby."),
+                            Map.of("role", "user", "content", prompt)
+                    )
+            ));
+        } else {
+            body = mapper.writeValueAsString(Map.of(
+                    "model", model,
+                    "input", List.of(Map.of("role", "user", "content", prompt))
+            ));
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(targetUrl))
+                .timeout(Duration.ofSeconds(30))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("OpenAI request failed with status " + response.statusCode() + ": " + response.body());
+        }
+
+        JsonNode root = mapper.readTree(response.body());
+
+        // Check for chat/completions choices format
+        JsonNode choices = root.path("choices");
+        if (choices.isArray() && !choices.isEmpty()) {
+            JsonNode message = choices.get(0).path("message");
+            if (message.has("content") && !message.path("content").asText().isBlank()) {
+                return message.path("content").asText();
+            }
+        }
+
+        // Check for responses output format
+        for (JsonNode output : root.path("output")) {
+            for (JsonNode content : output.path("content")) {
+                if ("output_text".equals(content.path("type").asText())) {
+                    return content.path("text").asText();
+                }
+            }
+        }
+
+        throw new IllegalStateException("OpenAI returned no recognized text output");
     }
 }
