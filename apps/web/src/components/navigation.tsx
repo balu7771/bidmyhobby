@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Search, Upload, Menu, X, LogOut, Package, MessageCircle, Mail } from "lucide-react";
+import { Home, Search, Upload, Menu, X, LogOut, Package, MessageCircle, Mail, Tag } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { clearSession } from "@/lib/auth";
 
 const navItems = [
     { name: "Home", href: "/", icon: Home },
+    { name: "Deals", href: "/deals", icon: Tag, badge: "Sale" },
     { name: "AI Profiles", href: "/dashboard", icon: Search },
     { name: "Upload", href: "/upload", icon: Upload },
 ];
@@ -134,6 +135,11 @@ export function Navigation() {
                             >
                                 <item.icon className={cn("w-5 h-5", isActive ? "text-blue-400" : "")} />
                                 {item.name}
+                                {item.badge && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                        {item.badge}
+                                    </span>
+                                )}
                                 {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
                             </Link>
                         );
@@ -187,6 +193,11 @@ export function Navigation() {
                                 >
                                     <item.icon className="w-6 h-6" />
                                     {item.name}
+                                    {item.badge && (
+                                        <span className="ml-auto px-2 py-0.5 text-xs font-bold rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                            {item.badge}
+                                        </span>
+                                    )}
                                 </Link>
                             );
                         })}
@@ -231,11 +242,18 @@ export function Navigation() {
                                 key={item.href}
                                 href={item.href}
                                 className={cn(
-                                    "flex flex-col items-center gap-1 p-2 rounded-xl text-[10px] font-medium transition-colors min-w-[60px]",
+                                    "flex flex-col items-center gap-1 p-2 rounded-xl text-[10px] font-medium transition-colors min-w-[56px] relative",
                                     isActive ? "text-blue-400 bg-blue-500/10" : "text-slate-500 hover:text-slate-300"
                                 )}
                             >
-                                <item.icon className={cn("w-5 h-5 mb-0.5", isActive ? "text-blue-400" : "")} />
+                                <div className="relative">
+                                    <item.icon className={cn("w-5 h-5 mb-0.5", isActive ? "text-blue-400" : "")} />
+                                    {item.badge && (
+                                        <span className="absolute -top-1 -right-2 px-1 text-[8px] font-bold rounded-full bg-orange-500 text-white leading-tight">
+                                            {item.badge}
+                                        </span>
+                                    )}
+                                </div>
                                 {item.name}
                             </Link>
                         );
